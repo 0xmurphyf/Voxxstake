@@ -19,6 +19,11 @@ export function WalletConnectPanel({ onLoginSuccess, isAuthenticating, authToken
             <h2 className="text-lg sm:text-xl hud-value glitch" data-text={wallet.connected ? 'WALLET CONNECTED' : 'CONNECT WALLET'}>
               {wallet.connected ? 'WALLET CONNECTED' : 'CONNECT WALLET'}
             </h2>
+            {!wallet.connected && (
+              <p className="mono text-xs text-[#00FFE5] mt-1">
+                Slush · Phantom · Binance · OKX
+              </p>
+            )}
             {wallet.connected && (
               <p className="text-xs mono text-[#00FFE5] mt-1">
                 {wallet.account?.address?.slice(0, 8)}...{wallet.account?.address?.slice(-6)}
