@@ -84,7 +84,7 @@ def create_admin_router(db: AsyncIOMotorDatabase):
 
         coll = get_stakes_collection(db)
         
-        all_stakes = await coll.find({}, {"_id": 0, "address": 1, "status": 1, "points_earned": 1}).to_list(10000)
+        all_stakes = await coll.find({}, {"_id": 0, "address": 1, "status": 1, "points_earned": 1}).limit(5000).to_list(5000)
         
         unique_users = len(set(stake["address"] for stake in all_stakes))
         total_stakes = len(all_stakes)

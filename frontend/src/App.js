@@ -14,7 +14,7 @@ import { Cube, Stack, Gear, Cpu } from '@phosphor-icons/react';
 
 function HomePage({ authToken, login, isAuthenticating, authError, logout, loadToken }) {
   const wallet = useWallet();
-  const { positions, stats, sellAlerts, loading } = useStaking(authToken);
+  const { positions, stats, sellAlerts, loading, syncing } = useStaking(authToken);
   const [activeTab, setActiveTab] = useState('nfts');
 
   useEffect(() => {
@@ -98,6 +98,13 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
 
           {/* Stats always visible */}
           <StatsCards stats={stats} />
+
+          {syncing && (
+            <div className="mono text-xs text-[#00FFE5] mb-3 flex items-center gap-2 flicker" data-testid="sync-indicator">
+              <div className="w-2 h-2 bg-[#00FFE5] rounded-full animate-pulse" />
+              SYNCING ON-CHAIN STATE...
+            </div>
+          )}
 
           {activeTab === 'nfts' && (
             <div data-testid="nfts-tab-content">

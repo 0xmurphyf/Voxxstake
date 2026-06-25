@@ -7,6 +7,7 @@ VOXX_TYPE = "0xdca282f30ff2acc0083c5c90969ae97c59a638a6a50ab9112f7ea17507cdd2b7:
 
 
 async def get_object(object_id: str) -> dict:
+    """Full object fetch — used for the NFT detail page only."""
     payload = {
         "jsonrpc": "2.0",
         "id": 1,
@@ -48,7 +49,8 @@ async def get_nft_metadata(object_id: str) -> dict:
     obj = await get_object(object_id)
     obj_data = obj.get("data", {})
     display = obj_data.get("display", {}).get("data", {}) or {}
-    content = obj_data.get("content", {}).get("fields", {}) or {}
+    content_obj = obj_data.get("content") or {}
+    content = content_obj.get("fields") or {}
 
     return {
         "object_id": object_id,
@@ -63,29 +65,39 @@ async def get_nft_metadata(object_id: str) -> dict:
     }
 
 
-async def get_owned_objects(address: str, type_filter: str = None) -> list:
+async def get_owned_objects(address: str, type_filter: str = None, lite: bool = True) -> list:
+    """Fetch owned NFTs for an address with pagination.
+
+    lite=True: only fetches showType + showDisplay (much smaller payload, faster).
+    lite=False: also fetches showContent + showOwner.
+    """
     all_objects = []
     cursor = None
-    
+
+    options = {"showType": True, "showDisplay": True}
+    if not lite:
+        options["showContent"] = True
+        options["showOwner"] = True
+
     while True:
         params = [
             address,
             {
                 "filter": {"StructType": type_filter} if type_filter else None,
-                "options": {"showType": True, "showOwner": True, "showContent": True, "showDisplay": True}
-            }
+                "options": options,
+            },
         ]
         if cursor:
             params.append(cursor)
-        
+
         payload = {
             "jsonrpc": "2.0",
             "id": 1,
             "method": "suix_getOwnedObjects",
             "params": params,
         }
-        
-        async with httpx.AsyncClient(timeout=15.0) as client:
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(SUI_RPC_URL, json=payload)
             resp.raise_for_status()
             data = resp.json()
@@ -93,11 +105,11 @@ async def get_owned_objects(address: str, type_filter: str = None) -> list:
                 return all_objects
             result = data.get("result", {})
             all_objects.extend(result.get("data", []))
-            
+
             if not result.get("hasNextPage"):
                 break
             cursor = result.get("nextCursor")
             if not cursor:
                 break
-    
+
     return all_objects
