@@ -4,6 +4,8 @@
   "private": true,
   "dependencies": {
     "@hookform/resolvers": "5.0.1",
+    "@mysten/sui": "1.14.2",
+    "@phosphor-icons/react": "^2.1.10",
     "@radix-ui/react-accordion": "1.2.8",
     "@radix-ui/react-alert-dialog": "1.1.11",
     "@radix-ui/react-aspect-ratio": "1.1.4",
@@ -31,6 +33,7 @@
     "@radix-ui/react-toggle": "1.1.6",
     "@radix-ui/react-toggle-group": "1.1.7",
     "@radix-ui/react-tooltip": "1.2.4",
+    "@suiet/wallet-kit": "0.2.22",
     "@tanstack/react-query": "5.56.2",
     "axios": "1.16.0",
     "class-variance-authority": "0.7.1",
