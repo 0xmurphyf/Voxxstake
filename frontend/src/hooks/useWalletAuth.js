@@ -26,30 +26,22 @@ export function useWalletAuth() {
       const { nonce } = nonceRes.data;
 
       const messageBytes = new TextEncoder().encode(nonce);
-      
-      const signResult = await wallet.signMessage({
-        message: messageBytes,
-      });
 
-      const { signature, signedMessage } = signResult;
-      
-      let publicKeyBytes;
-      if (wallet.account.publicKey) {
-        publicKeyBytes = Array.from(
-          typeof wallet.account.publicKey === 'string'
-            ? new Uint8Array(Buffer.from(wallet.account.publicKey, 'base64'))
-            : wallet.account.publicKey
-        );
-      } else {
-        publicKeyBytes = Array.from(signature.slice(0, 32));
+      // Modern Sui wallets implement signPersonalMessage (sui:signPersonalMessage)
+      // Fall back to signMessage for older wallets
+      const signFn = wallet.signPersonalMessage || wallet.signMessage;
+      if (!signFn) {
+        throw new Error('Connected wallet does not support message signing');
       }
+
+      const signResult = await signFn({ message: messageBytes });
+      // signResult: { bytes: base64String, signature: base64String }
 
       const verifyRes = await axios.post(`${API}/auth/verify`, {
         address: wallet.account.address,
         nonce,
-        signature: Array.from(signature),
-        signedMessage: Array.from(signedMessage || messageBytes),
-        publicKey: publicKeyBytes,
+        signature: signResult.signature,
+        bytes: signResult.bytes,
       });
 
       const { token } = verifyRes.data;
@@ -59,7 +51,11 @@ export function useWalletAuth() {
       return token;
     } catch (error) {
       console.error('Authentication error:', error);
-      setAuthError(error.response?.data?.detail || error.message);
+      const msg =
+        error.response?.data?.detail ||
+        error.message ||
+        'Authentication failed';
+      setAuthError(msg);
       setIsAuthenticating(false);
       throw error;
     }
