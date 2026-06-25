@@ -1,6 +1,5 @@
 .App {
   min-height: 100vh;
-  background: #05050A;
 }
 
 .nav-bar {
@@ -9,80 +8,166 @@
   z-index: 50;
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  background: rgba(5, 5, 10, 0.6);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(8, 2, 15, 0.85);
+  border-bottom: 1px solid rgba(176, 38, 255, 0.3);
 }
 
-.card-nft {
-  background: #0D111A;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  transition: transform 0.2s, border-color 0.2s;
+.nav-bar::after {
+  content: "";
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #00FFE5 50%, transparent);
 }
 
-.card-nft:hover {
+/* NFT Card */
+.nft-card {
+  background: linear-gradient(135deg, rgba(18, 8, 33, 0.8), rgba(8, 2, 15, 0.9));
+  border: 1px solid rgba(176, 38, 255, 0.3);
+  transition: all 0.3s;
+  position: relative;
+  overflow: hidden;
+  clip-path: polygon(
+    16px 0%, 100% 0%, 100% calc(100% - 16px),
+    calc(100% - 16px) 100%, 0% 100%, 0% 16px
+  );
+}
+
+.nft-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, transparent 30%, rgba(0, 255, 229, 0.03) 50%, transparent 70%);
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+
+.nft-card:hover {
+  border-color: #00FFE5;
+  box-shadow: 0 0 40px rgba(0, 255, 229, 0.3);
   transform: translateY(-4px);
-  border-color: #3898FF;
-  box-shadow: 0 0 20px rgba(56, 152, 255, 0.2);
 }
 
-.btn-primary {
-  background: linear-gradient(135deg, #3898FF 0%, #00F0FF 100%);
+.nft-card:hover::before {
+  opacity: 1;
+}
+
+.nft-image-wrap {
+  position: relative;
+  background: linear-gradient(135deg, rgba(176, 38, 255, 0.2), rgba(0, 255, 229, 0.1));
+  overflow: hidden;
+}
+
+.nft-image-wrap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 70%, rgba(8, 2, 15, 0.8));
+  pointer-events: none;
+}
+
+/* Stats Card */
+.stats-card {
+  background: rgba(18, 8, 33, 0.7);
+  border: 1px solid rgba(176, 38, 255, 0.3);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  position: relative;
+  overflow: hidden;
+}
+
+.stats-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 3px;
+  height: 100%;
+  background: linear-gradient(180deg, #B026FF, #00FFE5);
+}
+
+.stats-card-cyan::before {
+  background: linear-gradient(180deg, #00FFE5, #B026FF);
+}
+
+/* Tab Navigation */
+.cp-tab {
+  position: relative;
+  padding: 8px 16px;
+  font-family: 'Orbitron', sans-serif;
+  font-weight: 700;
+  font-size: 0.875rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #8E78A8;
+  background: transparent;
+  border: none;
+  cursor: pointer;
   transition: all 0.2s;
 }
 
-.btn-primary:hover {
-  transform: scale(1.05);
-  box-shadow: 0 0 20px rgba(0, 240, 255, 0.4);
+.cp-tab:hover {
+  color: #E5D9F2;
 }
 
-.skeleton {
-  background: rgba(255, 255, 255, 0.05);
-  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+.cp-tab-active {
+  color: #00FFE5;
+  text-shadow: 0 0 10px rgba(0, 255, 229, 0.5);
 }
 
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
+.cp-tab-active::after {
+  content: "";
+  position: absolute;
+  bottom: -8px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #B026FF, #00FFE5);
+  box-shadow: 0 0 8px rgba(0, 255, 229, 0.6);
 }
 
-.stats-card {
-  background: linear-gradient(135deg, rgba(56, 152, 255, 0.1) 0%, rgba(0, 240, 255, 0.05) 100%);
-  border: 1px solid rgba(56, 152, 255, 0.3);
-}
-
-.tier-badge {
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 700;
+/* HUD-style label */
+.hud-label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.7rem;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.2em;
+  color: #00FFE5;
+  opacity: 0.7;
 }
 
-.tier-bronze {
-  background: rgba(205, 127, 50, 0.2);
-  color: #CD7F32;
-  border: 1px solid rgba(205, 127, 50, 0.4);
+.hud-value {
+  font-family: 'Orbitron', sans-serif;
+  font-weight: 900;
 }
 
-.tier-silver {
-  background: rgba(192, 192, 192, 0.2);
-  color: #C0C0C0;
-  border: 1px solid rgba(192, 192, 192, 0.4);
+/* Corner brackets decoration */
+.cp-brackets {
+  position: relative;
 }
 
-.tier-gold {
-  background: rgba(255, 215, 0, 0.2);
-  color: #FFD700;
-  border: 1px solid rgba(255, 215, 0, 0.4);
+.cp-brackets::before,
+.cp-brackets::after {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #00FFE5;
 }
 
-.tier-platinum {
-  background: rgba(229, 228, 226, 0.2);
-  color: #E5E4E2;
-  border: 1px solid rgba(229, 228, 226, 0.4);
+.cp-brackets::before {
+  top: -2px;
+  left: -2px;
+  border-right: none;
+  border-bottom: none;
+}
+
+.cp-brackets::after {
+  bottom: -2px;
+  right: -2px;
+  border-left: none;
+  border-top: none;
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -7,72 +7,59 @@ const API = `${BACKEND_URL}/api`;
 export function useStaking(authToken) {
   const [positions, setPositions] = useState([]);
   const [stats, setStats] = useState(null);
+  const [sellAlerts, setSellAlerts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const initialSyncDone = useRef(false);
 
-  const fetchPositions = async () => {
+  const syncStakes = useCallback(async () => {
     if (!authToken) return;
-    
+
     setLoading(true);
     setError(null);
     try {
-      const response = await axios.get(`${API}/staking/positions`, {
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
+      const response = await axios.post(
+        `${API}/staking/sync`,
+        {},
+        { headers: { Authorization: `Bearer ${authToken}` } }
+      );
       setPositions(response.data.positions);
+      setSellAlerts(response.data.sell_alerts || []);
       setStats({
-        total_staked: response.data.total_staked,
-        total_points: response.data.total_points,
+        total_active: response.data.total_active,
+        total_paused: response.data.total_paused,
+        total_lore_points: response.data.total_lore_points,
       });
+      initialSyncDone.current = true;
     } catch (err) {
-      console.error('Failed to fetch positions:', err);
+      console.error('Failed to sync stakes:', err);
       setError(err.response?.data?.detail || err.message);
     } finally {
       setLoading(false);
     }
-  };
-
-  const stakeNFT = async (objectId) => {
-    try {
-      await axios.post(
-        `${API}/staking/stake`,
-        { object_id: objectId },
-        { headers: { Authorization: `Bearer ${authToken}` } }
-      );
-      await fetchPositions();
-      return true;
-    } catch (err) {
-      console.error('Failed to stake NFT:', err);
-      throw err;
-    }
-  };
-
-  const unstakeNFT = async (objectId) => {
-    try {
-      const response = await axios.post(
-        `${API}/staking/unstake`,
-        { object_id: objectId },
-        { headers: { Authorization: `Bearer ${authToken}` } }
-      );
-      await fetchPositions();
-      return response.data;
-    } catch (err) {
-      console.error('Failed to unstake NFT:', err);
-      throw err;
-    }
-  };
+  }, [authToken]);
 
   useEffect(() => {
-    fetchPositions();
-  }, [authToken]);
+    if (authToken && !initialSyncDone.current) {
+      syncStakes();
+    }
+  }, [authToken, syncStakes]);
+
+  // Periodic re-sync every 60 seconds to detect sell events / point updates
+  useEffect(() => {
+    if (!authToken) return;
+    const interval = setInterval(() => {
+      syncStakes();
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [authToken, syncStakes]);
 
   return {
     positions,
     stats,
+    sellAlerts,
     loading,
     error,
-    stakeNFT,
-    unstakeNFT,
-    refreshPositions: fetchPositions,
+    syncStakes,
   };
 }

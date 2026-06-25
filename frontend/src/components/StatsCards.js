@@ -1,66 +1,58 @@
 import React from 'react';
-import { Cube, ArrowUp, Clock, Trophy } from '@phosphor-icons/react';
+import { Cube, Lightning, Clock, Trophy, Pause } from '@phosphor-icons/react';
 
-export function StatsCards({ stats, positions }) {
-  const activePositions = positions.filter(p => p.status === 'staked');
-  const avgDuration = activePositions.length > 0
-    ? activePositions.reduce((sum, p) => sum + p.duration_days, 0) / activePositions.length
-    : 0;
-
+export function StatsCards({ stats }) {
   const cards = [
     {
-      title: 'Total Staked',
-      value: stats?.total_staked || 0,
-      icon: Cube,
-      color: 'from-[#3898FF] to-[#00F0FF]',
-      testId: 'total-staked-stat'
+      title: 'Active Stakes',
+      value: stats?.total_active || 0,
+      icon: Lightning,
+      accent: 'cyan',
+      testId: 'stat-active',
     },
     {
-      title: 'Total Points',
-      value: (stats?.total_points || 0).toFixed(2),
+      title: 'Lore Points',
+      value: (stats?.total_lore_points || 0).toFixed(2),
       icon: Trophy,
-      color: 'from-[#00FF9D] to-[#00D4AA]',
-      testId: 'total-points-stat'
+      accent: 'purple',
+      testId: 'stat-lore-points',
     },
     {
-      title: 'Avg Duration',
-      value: `${avgDuration.toFixed(1)}d`,
+      title: 'Paused',
+      value: stats?.total_paused || 0,
+      icon: Pause,
+      accent: 'cyan',
+      testId: 'stat-paused',
+    },
+    {
+      title: 'Base Rate',
+      value: '10/d',
       icon: Clock,
-      color: 'from-[#FFB800] to-[#FF8C00]',
-      testId: 'avg-duration-stat'
-    },
-    {
-      title: 'Rate',
-      value: '10 pts/day',
-      icon: ArrowUp,
-      color: 'from-[#FF3B30] to-[#FF1744]',
-      testId: 'rate-stat'
+      accent: 'purple',
+      testId: 'stat-rate',
     },
   ];
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8" data-testid="stats-cards">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-8" data-testid="stats-cards">
       {cards.map((card, idx) => {
         const Icon = card.icon;
+        const isAlt = card.accent === 'cyan';
         return (
           <div
             key={idx}
-            className="glass-effect rounded-sm p-6 glow-border"
+            className={`stats-card ${isAlt ? 'stats-card-cyan' : ''} cp-corner-cuts p-4 sm:p-5`}
             data-testid={card.testId}
           >
-            <div className="flex items-center justify-between mb-4">
-              <div className={`w-10 h-10 rounded-sm bg-gradient-to-br ${card.color} flex items-center justify-center`}>
-                <Icon size={20} weight="bold" className="text-white" />
+            <div className="flex items-start justify-between mb-3">
+              <div className={`w-9 h-9 flex items-center justify-center cp-corner-cuts bg-gradient-to-br ${isAlt ? 'from-[#00FFE5] to-[#00CCB8]' : 'from-[#B026FF] to-[#7B00CC]'}`}>
+                <Icon size={18} weight="bold" className={isAlt ? 'text-[#08020F]' : 'text-white'} />
               </div>
             </div>
-            <div>
-              <p className="text-xs text-[#8E9BAE] uppercase tracking-[0.2em] mb-2" style={{ fontFamily: 'IBM Plex Sans, sans-serif' }}>
-                {card.title}
-              </p>
-              <p className="text-3xl font-black tracking-tight" style={{ fontFamily: 'Unbounded, sans-serif' }}>
-                {card.value}
-              </p>
-            </div>
+            <p className="hud-label mb-1">{card.title}</p>
+            <p className="text-2xl sm:text-3xl hud-value text-white">
+              {card.value}
+            </p>
           </div>
         );
       })}

@@ -4,193 +4,274 @@ from datetime import datetime, timezone
 from pydantic import BaseModel
 from typing import Optional, List
 from auth import decode_token
-from sui_client import verify_voxx_ownership, get_owned_objects, VOXX_TYPE
+from sui_client import get_owned_objects, get_nft_metadata, VOXX_TYPE
 
 router = APIRouter(prefix="/staking", tags=["staking"])
 
-class StakeRequest(BaseModel):
-    object_id: str
+BASE_POINTS_PER_DAY = 10.0
 
-class StakeResponse(BaseModel):
-    success: bool
-    status: str
-    staked_at: str
-
-class UnstakeRequest(BaseModel):
-    object_id: str
-
-class UnstakeResponse(BaseModel):
-    success: bool
-    status: str
-    points_earned: float
 
 class StakingPosition(BaseModel):
     object_id: str
-    staked_at: str
-    unstaked_at: Optional[str]
+    name: Optional[str] = None
+    image_url: Optional[str] = None
+    created_at: str
+    total_staked_seconds: float
+    current_session_start: Optional[str]
     status: str
-    points_earned: float
+    lore_points: float
     duration_days: float
     tier: str
+    is_owned: bool
+
 
 class StakingStats(BaseModel):
-    total_staked: int
-    total_points: float
+    total_active: int
+    total_paused: int
+    total_lore_points: float
     positions: List[StakingPosition]
+    sell_alerts: List[str]
 
-class UserNFTsResponse(BaseModel):
-    nfts: List[dict]
-    count: int
 
 def get_stakes_collection(db: AsyncIOMotorDatabase):
     return db["stakes"]
 
+
 def get_tiers_collection(db: AsyncIOMotorDatabase):
     return db["tiers"]
 
-def calculate_points(staked_at: datetime, unstaked_at: datetime, tier_multiplier: float) -> float:
-    duration = (unstaked_at - staked_at).total_seconds() / 86400
-    base_points_per_day = 10.0
-    return duration * base_points_per_day * tier_multiplier
+
+def default_tiers():
+    return [
+        {"name": "Bronze", "multiplier": 1.0, "min_days": 0},
+        {"name": "Silver", "multiplier": 1.5, "min_days": 7},
+        {"name": "Gold", "multiplier": 2.0, "min_days": 30},
+        {"name": "Platinum", "multiplier": 3.0, "min_days": 90},
+    ]
+
 
 def get_tier_for_duration(duration_days: float, tiers: list) -> dict:
     sorted_tiers = sorted(tiers, key=lambda x: x["min_days"], reverse=True)
     for tier in sorted_tiers:
         if duration_days >= tier["min_days"]:
             return tier
-    return sorted_tiers[-1] if sorted_tiers else {"name": "Bronze", "multiplier": 1.0, "min_days": 0}
+    return sorted_tiers[-1] if sorted_tiers else default_tiers()[0]
+
+
+def compute_total_active_seconds(stake: dict, now: datetime) -> float:
+    total = stake.get("total_staked_seconds", 0.0)
+    if stake.get("status") == "active" and stake.get("current_session_start"):
+        session_start = datetime.fromisoformat(stake["current_session_start"])
+        total += max(0.0, (now - session_start).total_seconds())
+    return total
+
+
+def compute_points(total_active_seconds: float, tiers: list) -> tuple:
+    duration_days = total_active_seconds / 86400
+    tier = get_tier_for_duration(duration_days, tiers)
+    points = duration_days * BASE_POINTS_PER_DAY * tier["multiplier"]
+    return points, duration_days, tier
+
+
+async def _sync_user_stakes(db, address: str) -> tuple:
+    """Returns (positions, sell_alerts) after syncing wallet state with DB."""
+    coll = get_stakes_collection(db)
+    tiers_coll = get_tiers_collection(db)
+    now = datetime.now(timezone.utc)
+
+    tiers = await tiers_coll.find({}, {"_id": 0}).to_list(100)
+    if not tiers:
+        tiers = default_tiers()
+
+    owned_nfts = await get_owned_objects(address, VOXX_TYPE)
+    owned_map = {}
+    for nft in owned_nfts:
+        obj_data = nft.get("data", {})
+        obj_id = obj_data.get("objectId")
+        if not obj_id:
+            continue
+        display = (obj_data.get("display") or {}).get("data") or {}
+        content = (obj_data.get("content") or {}).get("fields") or {}
+        owned_map[obj_id] = {
+            "name": display.get("name") or content.get("name") or f"VOXX #{obj_id[-6:]}",
+            "image_url": display.get("image_url") or content.get("image_url") or content.get("url"),
+        }
+
+    existing_stakes = await coll.find({"address": address}).to_list(500)
+    existing_map = {s["object_id"]: s for s in existing_stakes}
+
+    sell_alerts = []
+
+    # 1) For each owned NFT: ensure active stake exists
+    for obj_id, meta in owned_map.items():
+        if obj_id in existing_map:
+            stake = existing_map[obj_id]
+            if stake.get("status") == "paused":
+                # Resume staking: NFT returned to wallet
+                await coll.update_one(
+                    {"_id": stake["_id"]},
+                    {"$set": {
+                        "status": "active",
+                        "current_session_start": now.isoformat(),
+                        "name": meta["name"],
+                        "image_url": meta["image_url"],
+                        "last_synced": now.isoformat(),
+                    }},
+                )
+                stake["status"] = "active"
+                stake["current_session_start"] = now.isoformat()
+            else:
+                # Already active — just refresh metadata
+                await coll.update_one(
+                    {"_id": stake["_id"]},
+                    {"$set": {
+                        "name": meta["name"],
+                        "image_url": meta["image_url"],
+                        "last_synced": now.isoformat(),
+                    }},
+                )
+        else:
+            # New NFT detected — auto-stake
+            new_stake = {
+                "address": address,
+                "object_id": obj_id,
+                "name": meta["name"],
+                "image_url": meta["image_url"],
+                "created_at": now.isoformat(),
+                "total_staked_seconds": 0.0,
+                "current_session_start": now.isoformat(),
+                "status": "active",
+                "last_synced": now.isoformat(),
+            }
+            await coll.insert_one(new_stake)
+            existing_map[obj_id] = new_stake
+
+    # 2) For each active stake whose NFT is no longer owned: pause + lock points
+    for obj_id, stake in existing_map.items():
+        if obj_id not in owned_map and stake.get("status") == "active":
+            session_start_str = stake.get("current_session_start")
+            session_seconds = 0.0
+            if session_start_str:
+                session_start = datetime.fromisoformat(session_start_str)
+                session_seconds = max(0.0, (now - session_start).total_seconds())
+            new_total = stake.get("total_staked_seconds", 0.0) + session_seconds
+            await coll.update_one(
+                {"_id": stake["_id"]},
+                {"$set": {
+                    "status": "paused",
+                    "current_session_start": None,
+                    "total_staked_seconds": new_total,
+                    "last_synced": now.isoformat(),
+                }},
+            )
+            stake["status"] = "paused"
+            stake["current_session_start"] = None
+            stake["total_staked_seconds"] = new_total
+            sell_alerts.append(stake.get("name") or f"VOXX #{obj_id[-6:]}")
+
+    # 3) Build response positions
+    positions: List[StakingPosition] = []
+    active_count = 0
+    paused_count = 0
+    total_points = 0.0
+
+    fresh_stakes = await coll.find({"address": address}, {"_id": 0}).to_list(500)
+    for stake in fresh_stakes:
+        total_active_seconds = compute_total_active_seconds(stake, now)
+        points, duration_days, tier = compute_points(total_active_seconds, tiers)
+        total_points += points
+        if stake.get("status") == "active":
+            active_count += 1
+        else:
+            paused_count += 1
+
+        positions.append(StakingPosition(
+            object_id=stake["object_id"],
+            name=stake.get("name"),
+            image_url=stake.get("image_url"),
+            created_at=stake.get("created_at"),
+            total_staked_seconds=total_active_seconds,
+            current_session_start=stake.get("current_session_start"),
+            status=stake.get("status"),
+            lore_points=points,
+            duration_days=duration_days,
+            tier=tier["name"],
+            is_owned=stake["object_id"] in owned_map,
+        ))
+
+    # Sort: active first, then by points desc
+    positions.sort(key=lambda p: (0 if p.status == "active" else 1, -p.lore_points))
+
+    return positions, sell_alerts, active_count, paused_count, total_points
+
 
 def create_staking_router(db: AsyncIOMotorDatabase):
-    @router.post("/stake", response_model=StakeResponse)
-    async def stake_nft(body: StakeRequest, authorization: str = Header(None)):
+    @router.post("/sync", response_model=StakingStats)
+    async def sync_stakes(authorization: str = Header(None)):
         if not authorization or not authorization.startswith("Bearer "):
             raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
-        
         token = authorization.replace("Bearer ", "")
         address = decode_token(token)
-        coll = get_stakes_collection(db)
 
-        existing = await coll.find_one({"address": address, "object_id": body.object_id, "status": "staked"}, {"_id": 0})
-        if existing:
-            raise HTTPException(status_code=400, detail="NFT already staked")
+        positions, sell_alerts, active_count, paused_count, total_points = await _sync_user_stakes(db, address)
 
-        owns = await verify_voxx_ownership(address, body.object_id)
-        if not owns:
-            raise HTTPException(status_code=400, detail="You do not own this VOXX NFT or it does not exist")
-
-        staked_at = datetime.now(timezone.utc)
-        doc = {
-            "address": address,
-            "object_id": body.object_id,
-            "staked_at": staked_at.isoformat(),
-            "unstaked_at": None,
-            "status": "staked",
-            "points_earned": 0.0,
-        }
-        await coll.insert_one(doc)
-        return StakeResponse(success=True, status="staked", staked_at=staked_at.isoformat())
-
-    @router.post("/unstake", response_model=UnstakeResponse)
-    async def unstake_nft(body: UnstakeRequest, authorization: str = Header(None)):
-        if not authorization or not authorization.startswith("Bearer "):
-            raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
-        
-        token = authorization.replace("Bearer ", "")
-        address = decode_token(token)
-        coll = get_stakes_collection(db)
-        tiers_coll = get_tiers_collection(db)
-
-        existing = await coll.find_one({"address": address, "object_id": body.object_id, "status": "staked"}, {"_id": 1, "staked_at": 1})
-        if not existing:
-            raise HTTPException(status_code=400, detail="No active stake found for this NFT")
-
-        unstaked_at = datetime.now(timezone.utc)
-        staked_at = datetime.fromisoformat(existing["staked_at"])
-        duration_days = (unstaked_at - staked_at).total_seconds() / 86400
-
-        tiers = await tiers_coll.find({}, {"_id": 0}).to_list(100)
-        if not tiers:
-            tiers = [
-                {"name": "Bronze", "multiplier": 1.0, "min_days": 0},
-                {"name": "Silver", "multiplier": 1.5, "min_days": 7},
-                {"name": "Gold", "multiplier": 2.0, "min_days": 30},
-                {"name": "Platinum", "multiplier": 3.0, "min_days": 90},
-            ]
-
-        tier = get_tier_for_duration(duration_days, tiers)
-        points = calculate_points(staked_at, unstaked_at, tier["multiplier"])
-
-        await coll.update_one(
-            {"_id": existing["_id"]},
-            {"$set": {"status": "unstaked", "unstaked_at": unstaked_at.isoformat(), "points_earned": points}},
+        return StakingStats(
+            total_active=active_count,
+            total_paused=paused_count,
+            total_lore_points=total_points,
+            positions=positions,
+            sell_alerts=sell_alerts,
         )
-        return UnstakeResponse(success=True, status="unstaked", points_earned=points)
 
     @router.get("/positions", response_model=StakingStats)
     async def get_staking_positions(authorization: str = Header(None)):
         if not authorization or not authorization.startswith("Bearer "):
             raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
-        
         token = authorization.replace("Bearer ", "")
         address = decode_token(token)
-        coll = get_stakes_collection(db)
-        tiers_coll = get_tiers_collection(db)
 
-        stakes = await coll.find({"address": address}, {"_id": 0}).to_list(1000)
-        
-        tiers = await tiers_coll.find({}, {"_id": 0}).to_list(100)
-        if not tiers:
-            tiers = [
-                {"name": "Bronze", "multiplier": 1.0, "min_days": 0},
-                {"name": "Silver", "multiplier": 1.5, "min_days": 7},
-                {"name": "Gold", "multiplier": 2.0, "min_days": 30},
-                {"name": "Platinum", "multiplier": 3.0, "min_days": 90},
-            ]
+        positions, sell_alerts, active_count, paused_count, total_points = await _sync_user_stakes(db, address)
 
-        positions = []
-        total_points = 0.0
-        total_staked = 0
+        return StakingStats(
+            total_active=active_count,
+            total_paused=paused_count,
+            total_lore_points=total_points,
+            positions=positions,
+            sell_alerts=sell_alerts,
+        )
 
-        for stake in stakes:
-            staked_at = datetime.fromisoformat(stake["staked_at"])
-            unstaked_at_str = stake.get("unstaked_at")
-            
-            if stake["status"] == "staked":
-                total_staked += 1
-                current_time = datetime.now(timezone.utc)
-                duration_days = (current_time - staked_at).total_seconds() / 86400
-            else:
-                if unstaked_at_str:
-                    unstaked_at = datetime.fromisoformat(unstaked_at_str)
-                    duration_days = (unstaked_at - staked_at).total_seconds() / 86400
-                else:
-                    duration_days = 0
-
-            tier = get_tier_for_duration(duration_days, tiers)
-            points = stake.get("points_earned", 0.0)
-            total_points += points
-
-            positions.append(StakingPosition(
-                object_id=stake["object_id"],
-                staked_at=stake["staked_at"],
-                unstaked_at=unstaked_at_str,
-                status=stake["status"],
-                points_earned=points,
-                duration_days=duration_days,
-                tier=tier["name"]
-            ))
-
-        return StakingStats(total_staked=total_staked, total_points=total_points, positions=positions)
-
-    @router.get("/nfts", response_model=UserNFTsResponse)
-    async def get_user_nfts(authorization: str = Header(None)):
+    @router.get("/nft/{object_id}")
+    async def get_nft_detail(object_id: str, authorization: str = Header(None)):
         if not authorization or not authorization.startswith("Bearer "):
             raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
-        
         token = authorization.replace("Bearer ", "")
         address = decode_token(token)
-        
-        nfts = await get_owned_objects(address, VOXX_TYPE)
-        return UserNFTsResponse(nfts=nfts, count=len(nfts))
+
+        metadata = await get_nft_metadata(object_id)
+
+        coll = get_stakes_collection(db)
+        tiers_coll = get_tiers_collection(db)
+        stake = await coll.find_one({"address": address, "object_id": object_id}, {"_id": 0})
+
+        tiers = await tiers_coll.find({}, {"_id": 0}).to_list(100)
+        if not tiers:
+            tiers = default_tiers()
+
+        position = None
+        if stake:
+            now = datetime.now(timezone.utc)
+            total_active_seconds = compute_total_active_seconds(stake, now)
+            points, duration_days, tier = compute_points(total_active_seconds, tiers)
+            position = {
+                "status": stake.get("status"),
+                "lore_points": points,
+                "duration_days": duration_days,
+                "tier": tier["name"],
+                "tier_multiplier": tier["multiplier"],
+                "created_at": stake.get("created_at"),
+                "current_session_start": stake.get("current_session_start"),
+            }
+
+        return {"metadata": metadata, "position": position}
 
     return router

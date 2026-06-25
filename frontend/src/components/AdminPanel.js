@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Gear, Trophy, Lightning, ChartLine } from '@phosphor-icons/react';
+import { Gear, Trophy, Lightning, ChartLine, FloppyDisk, PencilSimple } from '@phosphor-icons/react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -44,7 +44,6 @@ export function AdminPanel({ authToken }) {
         { tiers },
         { headers: { Authorization: `Bearer ${authToken}` } }
       );
-      alert('Tiers updated successfully!');
       setEditMode(false);
     } catch (error) {
       alert(error.response?.data?.detail || 'Failed to update tiers');
@@ -55,41 +54,41 @@ export function AdminPanel({ authToken }) {
 
   const updateTier = (index, field, value) => {
     const newTiers = [...tiers];
-    newTiers[index][field] = parseFloat(value) || 0;
+    newTiers[index] = { ...newTiers[index], [field]: parseFloat(value) || 0 };
     setTiers(newTiers);
   };
 
+  const statCards = stats ? [
+    { title: 'Total Holders', value: stats.total_users, icon: Trophy, testId: 'admin-total-users' },
+    { title: 'Tracked Stakes', value: stats.total_stakes, icon: ChartLine, testId: 'admin-total-stakes' },
+    { title: 'Active', value: stats.total_active_stakes, icon: Lightning, testId: 'admin-active-stakes' },
+    { title: 'Lore Pts Issued', value: stats.total_points_distributed.toFixed(0), icon: Trophy, testId: 'admin-points-distributed' },
+  ] : [];
+
   return (
     <div className="space-y-6" data-testid="admin-panel">
-      <div className="flex items-center gap-4 mb-6">
-        <div className="w-12 h-12 rounded-sm bg-gradient-to-br from-[#FFB800] to-[#FF8C00] flex items-center justify-center">
+      <div className="flex items-center gap-4 mb-2">
+        <div className="w-12 h-12 cp-corner-cuts bg-gradient-to-br from-[#B026FF] to-[#00FFE5] flex items-center justify-center">
           <Gear size={24} weight="bold" className="text-white" />
         </div>
         <div>
-          <h1 className="text-3xl font-black tracking-tight" style={{ fontFamily: 'Unbounded, sans-serif' }}>
-            ADMIN DASHBOARD
-          </h1>
-          <p className="text-[#8E9BAE] text-sm">Manage staking tiers and view platform statistics</p>
+          <p className="hud-label mb-1">// SYSTEM CONTROL</p>
+          <h1 className="text-2xl sm:text-3xl hud-value glitch" data-text="ADMIN PANEL">ADMIN PANEL</h1>
         </div>
       </div>
 
       {/* Stats Overview */}
       {stats && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" data-testid="admin-stats">
-          {[
-            { title: 'Total Users', value: stats.total_users, icon: Trophy, color: 'from-[#3898FF] to-[#00F0FF]', testId: 'admin-total-users' },
-            { title: 'Total Stakes', value: stats.total_stakes, icon: ChartLine, color: 'from-[#00FF9D] to-[#00D4AA]', testId: 'admin-total-stakes' },
-            { title: 'Active Stakes', value: stats.total_active_stakes, icon: Lightning, color: 'from-[#FFB800] to-[#FF8C00]', testId: 'admin-active-stakes' },
-            { title: 'Points Distributed', value: stats.total_points_distributed.toFixed(0), icon: Trophy, color: 'from-[#FF3B30] to-[#FF1744]', testId: 'admin-points-distributed' },
-          ].map((stat, idx) => {
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4" data-testid="admin-stats">
+          {statCards.map((stat, idx) => {
             const Icon = stat.icon;
             return (
-              <div key={idx} className="glass-effect glow-border rounded-sm p-6" data-testid={stat.testId}>
-                <div className={`w-10 h-10 rounded-sm bg-gradient-to-br ${stat.color} flex items-center justify-center mb-3`}>
-                  <Icon size={20} weight="bold" className="text-white" />
+              <div key={idx} className="stats-card cp-corner-cuts p-4 sm:p-5" data-testid={stat.testId}>
+                <div className="w-9 h-9 cp-corner-cuts bg-gradient-to-br from-[#B026FF] to-[#7B00CC] flex items-center justify-center mb-3">
+                  <Icon size={18} weight="bold" className="text-white" />
                 </div>
-                <p className="text-xs text-[#8E9BAE] uppercase tracking-[0.2em] mb-1">{stat.title}</p>
-                <p className="text-2xl font-black">{stat.value}</p>
+                <p className="hud-label mb-1">{stat.title}</p>
+                <p className="text-2xl sm:text-3xl hud-value text-white">{stat.value}</p>
               </div>
             );
           })}
@@ -97,95 +96,85 @@ export function AdminPanel({ authToken }) {
       )}
 
       {/* Tier Management */}
-      <div className="glass-effect rounded-sm p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-black tracking-tight" style={{ fontFamily: 'Unbounded, sans-serif' }}>
-            STAKING TIERS
-          </h2>
+      <div className="cp-panel cp-corner-cuts p-5 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+          <div>
+            <p className="hud-label mb-1">// REWARD MATRIX</p>
+            <h2 className="text-lg sm:text-xl hud-value">STAKING TIERS</h2>
+          </div>
           <div className="flex gap-2">
             {editMode ? (
               <>
                 <button
-                  onClick={() => setEditMode(false)}
-                  className="px-4 py-2 rounded-sm border border-[#8E9BAE] text-[#8E9BAE] font-bold text-sm hover:bg-[#8E9BAE] hover:text-white transition-colors"
+                  onClick={() => { setEditMode(false); fetchTiers(); }}
+                  className="cp-btn-ghost px-4 py-2 text-xs"
                   data-testid="cancel-edit-button"
                 >
-                  Cancel
+                  CANCEL
                 </button>
                 <button
                   onClick={handleSaveTiers}
                   disabled={loading}
-                  className="px-4 py-2 rounded-sm bg-gradient-to-r from-[#3898FF] to-[#00F0FF] text-white font-bold text-sm hover:scale-105 transition-transform disabled:opacity-50"
+                  className="cp-btn-cyan px-4 py-2 text-xs flex items-center gap-2"
                   data-testid="save-tiers-button"
                 >
-                  {loading ? 'Saving...' : 'Save Changes'}
+                  <FloppyDisk size={14} weight="bold" />
+                  {loading ? 'SAVING' : 'SAVE'}
                 </button>
               </>
             ) : (
               <button
                 onClick={() => setEditMode(true)}
-                className="px-4 py-2 rounded-sm bg-[#1E2638] text-white font-bold text-sm hover:bg-[#2A3548] transition-colors"
+                className="cp-btn px-4 py-2 text-xs flex items-center gap-2"
                 data-testid="edit-tiers-button"
               >
-                Edit Tiers
+                <PencilSimple size={14} weight="bold" />
+                EDIT
               </button>
             )}
           </div>
         </div>
 
-        <div className="space-y-4" data-testid="tiers-list">
+        <div className="space-y-3" data-testid="tiers-list">
           {tiers.map((tier, index) => (
-            <div key={index} className="border border-[#8E9BAE]/20 rounded-sm p-4" data-testid={`tier-${tier.name.toLowerCase()}`}>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div key={index} className="cp-panel-cyan p-4 cp-corner-cuts" data-testid={`tier-${tier.name.toLowerCase()}`}>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <div>
-                  <label className="text-xs text-[#8E9BAE] uppercase tracking-wider mb-2 block">
-                    Tier Name
-                  </label>
-                  <input
-                    type="text"
-                    value={tier.name}
-                    disabled
-                    className="w-full px-3 py-2 bg-[#05050A] border border-[#8E9BAE]/30 rounded-sm text-white font-bold"
-                  />
+                  <p className="hud-label mb-2">Tier</p>
+                  <p className={`status-badge ${`tier-${tier.name.toLowerCase()}`} inline-block`}>{tier.name}</p>
                 </div>
                 <div>
-                  <label className="text-xs text-[#8E9BAE] uppercase tracking-wider mb-2 block">
-                    Multiplier
-                  </label>
+                  <p className="hud-label mb-2">Multiplier</p>
                   <input
                     type="number"
                     step="0.1"
                     value={tier.multiplier}
                     onChange={(e) => updateTier(index, 'multiplier', e.target.value)}
                     disabled={!editMode}
-                    className="w-full px-3 py-2 bg-[#05050A] border border-[#8E9BAE]/30 rounded-sm text-white disabled:opacity-50"
+                    className="cp-input w-full text-sm"
                     data-testid={`tier-multiplier-${tier.name.toLowerCase()}`}
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-[#8E9BAE] uppercase tracking-wider mb-2 block">
-                    Min Days
-                  </label>
+                  <p className="hud-label mb-2">Min Days</p>
                   <input
                     type="number"
                     value={tier.min_days}
                     onChange={(e) => updateTier(index, 'min_days', e.target.value)}
                     disabled={!editMode}
-                    className="w-full px-3 py-2 bg-[#05050A] border border-[#8E9BAE]/30 rounded-sm text-white disabled:opacity-50"
+                    className="cp-input w-full text-sm"
                     data-testid={`tier-min-days-${tier.name.toLowerCase()}`}
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-[#8E9BAE] uppercase tracking-wider mb-2 block">
-                    APY %
-                  </label>
+                  <p className="hud-label mb-2">APY %</p>
                   <input
                     type="number"
                     step="0.1"
                     value={tier.apy}
                     onChange={(e) => updateTier(index, 'apy', e.target.value)}
                     disabled={!editMode}
-                    className="w-full px-3 py-2 bg-[#05050A] border border-[#8E9BAE]/30 rounded-sm text-white disabled:opacity-50"
+                    className="cp-input w-full text-sm"
                     data-testid={`tier-apy-${tier.name.toLowerCase()}`}
                   />
                 </div>

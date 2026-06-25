@@ -1,150 +1,144 @@
-import React, { useState } from 'react';
-import { useStaking } from '../hooks/useStaking';
-import { Clock, Lightning, Trophy, ArrowCounterClockwise } from '@phosphor-icons/react';
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Pause, Lightning, Warning, Trophy, Clock } from '@phosphor-icons/react';
 
-export function StakingDashboard({ authToken }) {
-  const { positions, unstakeNFT } = useStaking(authToken);
-  const [unstakingId, setUnstakingId] = useState(null);
+function formatDuration(days) {
+  if (days < 1) {
+    const hours = days * 24;
+    if (hours < 1) return `${(hours * 60).toFixed(0)} min`;
+    return `${hours.toFixed(1)} hrs`;
+  }
+  return `${days.toFixed(2)} days`;
+}
 
-  const handleUnstake = async (objectId) => {
-    setUnstakingId(objectId);
-    try {
-      const result = await unstakeNFT(objectId);
-      alert(`Successfully unstaked! You earned ${result.points_earned.toFixed(2)} points.`);
-    } catch (error) {
-      alert(error.response?.data?.detail || 'Failed to unstake NFT');
-    } finally {
-      setUnstakingId(null);
-    }
-  };
+function getTierClass(tier) {
+  return `tier-${(tier || 'bronze').toLowerCase()}`;
+}
 
-  const getTierClass = (tier) => {
-    const tierLower = tier.toLowerCase();
-    return `tier-${tierLower}`;
-  };
-
-  const formatDuration = (days) => {
-    if (days < 1) return `${(days * 24).toFixed(1)}h`;
-    return `${days.toFixed(1)}d`;
-  };
-
-  const activePositions = positions.filter(p => p.status === 'staked');
-  const completedPositions = positions.filter(p => p.status === 'unstaked');
+export function StakingDashboard({ positions, sellAlerts }) {
+  const navigate = useNavigate();
+  const activePositions = positions.filter((p) => p.status === 'active');
+  const pausedPositions = positions.filter((p) => p.status === 'paused');
 
   return (
     <div className="space-y-6" data-testid="staking-dashboard">
+      {/* Sell Alerts */}
+      {sellAlerts && sellAlerts.length > 0 && (
+        <div className="cp-alert cp-corner-cuts p-4 sm:p-5" data-testid="sell-alerts">
+          <div className="flex items-start gap-3">
+            <Warning size={24} weight="fill" className="text-[#FF003C] flex-shrink-0 mt-1" />
+            <div className="flex-1">
+              <p className="hud-label text-[#FF5577] mb-1">SELL EVENT DETECTED</p>
+              <p className="text-sm text-[#FFB3C0]">
+                {sellAlerts.length} NFT{sellAlerts.length > 1 ? 's' : ''} no longer in your wallet. Staking paused — your Lore Points are preserved. If the NFT returns, staking will auto-resume.
+              </p>
+              <p className="mono text-xs text-[#FF5577] mt-2">
+                {sellAlerts.slice(0, 3).join(' • ')}
+                {sellAlerts.length > 3 && ` • +${sellAlerts.length - 3} more`}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Active Stakes */}
-      <div>
-        <h2 className="text-2xl font-black mb-4 tracking-tight" style={{ fontFamily: 'Unbounded, sans-serif' }}>
-          ACTIVE STAKES ({activePositions.length})
-        </h2>
+      <section>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <Lightning size={20} weight="fill" className="text-[#00FF9D]" />
+            <h2 className="text-xl sm:text-2xl hud-value">ACTIVE STAKES</h2>
+            <span className="status-badge status-active">{activePositions.length}</span>
+          </div>
+        </div>
         {activePositions.length === 0 ? (
-          <div className="glass-effect rounded-sm p-8 text-center" data-testid="no-active-stakes">
-            <Lightning size={48} weight="duotone" className="mx-auto mb-3 text-[#8E9BAE]" />
-            <p className="text-[#8E9BAE]">No active stakes. Stake your VOXX NFTs to earn points!</p>
+          <div className="cp-panel cp-corner-cuts p-6 sm:p-8 text-center" data-testid="no-active-stakes">
+            <p className="hud-label mb-2">STATUS</p>
+            <p className="text-sm text-[#8E78A8]">
+              No active stakes. Holding VOXX NFTs auto-initiates staking — try refreshing or connecting a wallet with VOXX.
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {activePositions.map((position) => (
               <div
                 key={position.object_id}
-                className="glass-effect glow-border rounded-sm p-6"
+                className="cp-panel cp-corner-cuts cp-glow-purple p-5 cursor-pointer hover:cp-glow-cyan transition-all"
+                onClick={() => navigate(`/nft/${position.object_id}`)}
                 data-testid={`active-stake-${position.object_id}`}
               >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1">
-                    <h3 className="text-lg font-black mb-1" style={{ fontFamily: 'Unbounded, sans-serif' }}>
-                      VOXX #{position.object_id.slice(-6)}
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="hud-value text-base sm:text-lg truncate" data-testid={`active-name-${position.object_id}`}>
+                      {position.name || `VOXX #${position.object_id.slice(-6)}`}
                     </h3>
-                    <p className="text-xs text-[#8E9BAE] font-mono">
-                      {position.object_id.slice(0, 16)}...{position.object_id.slice(-8)}
+                    <p className="mono text-xs text-[#8E78A8] truncate">
+                      {position.object_id.slice(0, 14)}...{position.object_id.slice(-6)}
                     </p>
                   </div>
-                  <span className={`tier-badge ${getTierClass(position.tier)}`} data-testid={`tier-badge-${position.object_id}`}>
-                    {position.tier}
-                  </span>
+                  <span className={`status-badge ${getTierClass(position.tier)}`}>{position.tier}</span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="grid grid-cols-2 gap-3 pt-3 border-t border-[#B026FF]/20">
                   <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <Clock size={14} className="text-[#8E9BAE]" />
-                      <p className="text-xs text-[#8E9BAE] uppercase tracking-wider">Duration</p>
+                    <div className="flex items-center gap-1 mb-1">
+                      <Clock size={12} className="text-[#8E78A8]" />
+                      <p className="hud-label">Duration</p>
                     </div>
-                    <p className="text-lg font-bold text-white" data-testid={`duration-${position.object_id}`}>
-                      {formatDuration(position.duration_days)}
-                    </p>
+                    <p className="hud-value text-white">{formatDuration(position.duration_days)}</p>
                   </div>
                   <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <Trophy size={14} className="text-[#00FF9D]" />
-                      <p className="text-xs text-[#8E9BAE] uppercase tracking-wider">Projected</p>
+                    <div className="flex items-center gap-1 mb-1">
+                      <Trophy size={12} className="text-[#00FFE5]" />
+                      <p className="hud-label">Lore Points</p>
                     </div>
-                    <p className="text-lg font-bold text-[#00FF9D]" data-testid={`projected-points-${position.object_id}`}>
-                      {(position.duration_days * 10 * (position.tier === 'Bronze' ? 1 : position.tier === 'Silver' ? 1.5 : position.tier === 'Gold' ? 2 : 3)).toFixed(1)} pts
+                    <p className="hud-value text-[#00FFE5]" data-testid={`active-points-${position.object_id}`}>
+                      {position.lore_points.toFixed(2)}
                     </p>
                   </div>
                 </div>
-
-                <button
-                  onClick={() => handleUnstake(position.object_id)}
-                  disabled={unstakingId === position.object_id}
-                  className="w-full px-4 py-3 rounded-sm border border-[#FF3B30] text-[#FF3B30] font-bold uppercase text-sm flex items-center justify-center gap-2 hover:bg-[#FF3B30] hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  data-testid={`unstake-button-${position.object_id}`}
-                  style={{ fontFamily: 'IBM Plex Sans, sans-serif' }}
-                >
-                  {unstakingId === position.object_id ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                      Unstaking...
-                    </>
-                  ) : (
-                    <>
-                      <ArrowCounterClockwise size={16} weight="bold" />
-                      Unstake
-                    </>
-                  )}
-                </button>
               </div>
             ))}
           </div>
         )}
-      </div>
+      </section>
 
-      {/* Completed Stakes */}
-      {completedPositions.length > 0 && (
-        <div>
-          <h2 className="text-2xl font-black mb-4 tracking-tight" style={{ fontFamily: 'Unbounded, sans-serif' }}>
-            COMPLETED STAKES ({completedPositions.length})
-          </h2>
-          <div className="space-y-3">
-            {completedPositions.slice(0, 5).map((position) => (
+      {/* Paused Stakes */}
+      {pausedPositions.length > 0 && (
+        <section>
+          <div className="flex items-center gap-3 mb-4">
+            <Pause size={20} weight="fill" className="text-[#FF5577]" />
+            <h2 className="text-xl sm:text-2xl hud-value">PAUSED</h2>
+            <span className="status-badge status-paused">{pausedPositions.length}</span>
+          </div>
+          <div className="space-y-2">
+            {pausedPositions.map((position) => (
               <div
                 key={position.object_id}
-                className="glass-effect rounded-sm p-4 flex items-center justify-between"
-                data-testid={`completed-stake-${position.object_id}`}
+                className="cp-panel-cyan p-4 flex items-center justify-between cursor-pointer hover:cp-glow-cyan transition-all"
+                onClick={() => navigate(`/nft/${position.object_id}`)}
+                data-testid={`paused-stake-${position.object_id}`}
               >
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-sm bg-gradient-to-br from-[#3898FF]/20 to-[#00F0FF]/20 flex items-center justify-center">
-                    <Trophy size={20} weight="fill" className="text-[#00FF9D]" />
-                  </div>
-                  <div>
-                    <p className="font-bold text-sm">VOXX #{position.object_id.slice(-6)}</p>
-                    <p className="text-xs text-[#8E9BAE]">
-                      Staked for {formatDuration(position.duration_days)}
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <Pause size={18} weight="fill" className="text-[#FF5577] flex-shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="hud-value text-white text-sm truncate">
+                      {position.name || `VOXX #${position.object_id.slice(-6)}`}
+                    </p>
+                    <p className="mono text-xs text-[#8E78A8]">
+                      Locked: {formatDuration(position.duration_days)}
                     </p>
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-lg font-black text-[#00FF9D]" data-testid={`earned-points-${position.object_id}`}>
-                    +{position.points_earned.toFixed(2)}
+                <div className="text-right ml-3">
+                  <p className="hud-value text-[#00FFE5] text-lg" data-testid={`paused-points-${position.object_id}`}>
+                    {position.lore_points.toFixed(2)}
                   </p>
-                  <p className="text-xs text-[#8E9BAE] uppercase tracking-wider">Points</p>
+                  <p className="hud-label">PTS</p>
                 </div>
               </div>
             ))}
           </div>
-        </div>
+        </section>
       )}
     </div>
   );
