@@ -1,4 +1,5 @@
 import express from 'express';
+import path from 'path';
 import cors from 'cors';
 import { config } from './config';
 import { connectDB } from './db';
@@ -41,8 +42,18 @@ async function main() {
 
   app.use('/api', apiRouter);
 
+  // Serve frontend static files in production
+  const frontendBuild = path.resolve(__dirname, '../../frontend/build');
+  app.use(express.static(frontendBuild));
+
+  // SPA fallback: all non-API routes serve index.html
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(frontendBuild, 'index.html'));
+  });
+
   app.listen(config.port, () => {
-    console.log(`Voxxstake backend listening on port ${config.port}`);
+    console.log(`Voxxstake server listening on port ${config.port}`);
+    console.log(`Frontend served from ${frontendBuild}`);
   });
 }
 
