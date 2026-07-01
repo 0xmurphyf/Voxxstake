@@ -4,8 +4,6 @@
   "description": "VOXX NFT Soft Staking Platform on Sui blockchain",
   "private": true,
   "scripts": {
-    "postinstall": "npm --prefix backend install --include=dev && npm --prefix frontend install --include=dev",
-    "build": "npm --prefix frontend run build",
     "start": "npm --prefix backend run start"
   },
   "engines": {
