@@ -4,20 +4,6 @@
   "packages": {
     "node": "22"
   },
-  "steps": {
-    "install": {
-      "commands": [
-        { "cmd": "npm --prefix backend install" },
-        { "cmd": "npm --prefix frontend install" }
-      ]
-    },
-    "build": {
-      "inputs": [{ "step": "install" }],
-      "commands": [
-        { "cmd": "npm --prefix frontend run build" }
-      ]
-    }
-  },
   "deploy": {
     "startCommand": "npm --prefix backend run start"
   }
