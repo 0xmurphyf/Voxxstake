@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import cors from 'cors';
 import { config } from './config';
 import { connectDB } from './db';
@@ -42,18 +43,29 @@ async function main() {
 
   app.use('/api', apiRouter);
 
-  // Serve frontend static files in production
+  // Serve frontend static files
+  // Railway: /app/frontend/build, local: ../../frontend/build
   const frontendBuild = path.resolve(__dirname, '../../frontend/build');
+  console.log(`Frontend path: ${frontendBuild}`);
+  console.log(`Frontend exists: ${fs.existsSync(frontendBuild)}`);
+  if (fs.existsSync(frontendBuild)) {
+    console.log(`Frontend files: ${fs.readdirSync(frontendBuild).join(', ')}`);
+  }
+
   app.use(express.static(frontendBuild));
 
-  // SPA fallback: all non-API routes serve index.html
+  // SPA fallback
   app.get('*', (_req, res) => {
-    res.sendFile(path.join(frontendBuild, 'index.html'));
+    const indexPath = path.join(frontendBuild, 'index.html');
+    if (fs.existsSync(indexPath)) {
+      res.sendFile(indexPath);
+    } else {
+      res.status(404).json({ detail: 'Frontend not built', path: indexPath });
+    }
   });
 
   app.listen(config.port, () => {
     console.log(`Voxxstake server listening on port ${config.port}`);
-    console.log(`Frontend served from ${frontendBuild}`);
   });
 }
 
