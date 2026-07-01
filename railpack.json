@@ -5,6 +5,9 @@
     "node": "22"
   },
   "deploy": {
-    "startCommand": "npm --prefix backend run start"
+    "startCommand": "npm --prefix backend run start",
+    "variables": {
+      "NODE_ENV": "production"
+    }
   }
 }
