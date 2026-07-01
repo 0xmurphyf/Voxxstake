@@ -3,5 +3,22 @@
   "provider": "node",
   "packages": {
     "node": "22"
+  },
+  "steps": {
+    "install": {
+      "commands": [
+        { "cmd": "cd backend && npm install" },
+        { "cmd": "cd frontend && npm install" }
+      ]
+    },
+    "build": {
+      "inputs": [{ "step": "install" }],
+      "commands": [
+        { "cmd": "cd frontend && npx craco build" }
+      ]
+    }
+  },
+  "deploy": {
+    "startCommand": "cd backend && npx tsx src/index.ts"
   }
 }

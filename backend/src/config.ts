@@ -1,7 +1,8 @@
 import dotenv from 'dotenv';
 import path from 'path';
 
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
+// Try to load .env file (silently skip if not found, e.g. Railway injects env vars directly)
+dotenv.config({ path: path.resolve(__dirname, '../.env'), override: false });
 
 export const config = {
   port: parseInt(process.env.PORT || '8001', 10),
