@@ -1,0 +1,13 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "provider": "node",
+  "packages": {
+    "node": "22"
+  },
+  "deploy": {
+    "startCommand": "cd backend && node dist/index.js",
+    "variables": {
+      "PORT": "8001"
+    }
+  }
+}
