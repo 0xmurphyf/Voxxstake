@@ -4,7 +4,8 @@
   "description": "VOXX NFT Soft Staking Platform on Sui blockchain",
   "private": true,
   "scripts": {
-    "start": "npm --prefix backend run start"
+    "postinstall": "bash build.sh",
+    "start": "bash start.sh"
   },
   "engines": {
     "node": ">=22"
