@@ -7,7 +7,8 @@ echo "=== Starting Voxxstake ==="
 if [ ! -f frontend/build/index.html ]; then
   echo "=== Frontend not built, building now ==="
   cd frontend
-  npm install --include=dev 2>/dev/null || npm install
+  rm -rf node_modules
+  npm install
   npx craco build
   cd ..
   echo "=== Frontend build complete ==="
