@@ -7,18 +7,18 @@
   "steps": {
     "install": {
       "commands": [
-        { "cmd": "cd backend && npm install" },
-        { "cmd": "cd frontend && npm install" }
+        { "cmd": "npm --prefix backend install" },
+        { "cmd": "npm --prefix frontend install" }
       ]
     },
     "build": {
       "inputs": [{ "step": "install" }],
       "commands": [
-        { "cmd": "cd frontend && npx craco build" }
+        { "cmd": "npm --prefix frontend run build" }
       ]
     }
   },
   "deploy": {
-    "startCommand": "cd backend && npx tsx src/index.ts"
+    "startCommand": "npm --prefix backend run start"
   }
 }
