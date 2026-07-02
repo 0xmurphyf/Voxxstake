@@ -1,5 +1,7 @@
 # Voxxstake — VOXX NFT Soft Staking Platform
 
+> Last deploy: 2025-01-20 | Debug: `/api/debug/config`, `/api/staking/debug/nfts?address=0x...`
+
 A decentralized NFT soft-staking platform built on the **Sui blockchain**. Hold VOXX NFTs in your wallet to automatically accumulate Lore Points — no transactions, no gas fees, no locking. Your NFTs stay in your wallet at all times.
 
 ## How It Works

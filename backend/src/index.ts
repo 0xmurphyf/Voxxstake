@@ -37,6 +37,15 @@ async function main() {
     res.json({ status: 'ok', service: 'sui-nft-staking' });
   });
 
+  apiRouter.get('/debug/config', (_req, res) => {
+    res.json({
+      suiRpcUrl: config.suiRpcUrl,
+      port: config.port,
+      mongoDb: config.dbName,
+      corsOrigins: config.corsOrigins,
+    });
+  });
+
   apiRouter.use('/auth', authRouter);
   apiRouter.use('/staking', stakingRouter);
   apiRouter.use('/admin', adminRouter);
