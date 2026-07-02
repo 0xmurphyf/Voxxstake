@@ -9,6 +9,6 @@ export const config = {
   mongoUrl: process.env.MONGO_URL || 'mongodb://localhost:27017',
   dbName: process.env.DB_NAME || 'voxxstake',
   corsOrigins: (process.env.CORS_ORIGINS || '*').split(',').map(s => s.trim()),
-  suiRpcUrl: process.env.SUI_RPC_URL || 'https://fullnode.devnet.sui.io:443',
+  suiRpcUrl: process.env.SUI_RPC_URL || 'https://fullnode.mainnet.sui.io:443',
   jwtSecret: process.env.JWT_SECRET || 'dev-secret-key-do-not-use-in-production',
 };
