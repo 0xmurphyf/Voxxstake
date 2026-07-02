@@ -23,29 +23,6 @@ export async function getObject(objectId: string): Promise<Record<string, unknow
   return (result as Record<string, unknown>) || {};
 }
 
-// ─── Verify VOXX ownership ──────────────────────────────────────
-export async function verifyVoxxOwnership(
-  address: string,
-  objectId: string
-): Promise<boolean> {
-  try {
-    const obj = await getObject(objectId);
-    const data = obj.data as Record<string, unknown> | undefined;
-    if (!data) return false;
-    if (data.type !== VOXX_TYPE) return false;
-
-    const ownerInfo = data.owner as Record<string, unknown> | undefined;
-    const ownerAddress =
-      ownerInfo && 'AddressOwner' in ownerInfo
-        ? (ownerInfo as Record<string, string>).AddressOwner
-        : null;
-
-    return ownerAddress === address;
-  } catch {
-    return false;
-  }
-}
-
 // ─── Get NFT metadata ───────────────────────────────────────────
 export async function getNftMetadata(
   objectId: string
@@ -61,22 +38,17 @@ export async function getNftMetadata(
     object_id: objectId,
     type: data.type,
     owner: data.owner,
-    name:
-      display.name || content.name || `VOXX #${objectId.slice(-6)}`,
-    description:
-      display.description ||
-      content.description ||
-      'VOXX Inc. Genesis NFT',
-    image_url:
-      display.image_url || content.image_url || content.url || null,
+    name: display.name || content.name || `VOXX #${objectId.slice(-6)}`,
+    description: display.description || content.description || 'VOXX Inc. Genesis NFT',
+    image_url: display.image_url || content.image_url || content.url || null,
     project_url: display.project_url || null,
     attributes: content.attributes || {},
     raw_content: content,
   };
 }
 
-// ─── Get owned objects (paginated) ──────────────────────────────
-export async function getOwnedObjects(
+// ─── Get directly owned objects (paginated) ─────────────────────
+async function getDirectlyOwnedObjects(
   address: string,
   typeFilter?: string,
   lite: boolean = true
@@ -114,15 +86,132 @@ export async function getOwnedObjects(
   return allObjects;
 }
 
+// ─── Get Kiosk-owned NFTs for an address ────────────────────────
+//
+// Sui Kiosk: NFTs placed in a Kiosk are owned by the Kiosk object,
+// not the address directly. To find them:
+//   1. Find all Kiosk objects owned by the address
+//      (type: 0x2::kiosk::Kiosk)
+//   2. For each Kiosk, query dynamic fields to list items inside
+//   3. Filter items by VOXX type
+//
+async function getKioskOwnedObjects(
+  address: string,
+  typeFilter: string
+): Promise<Record<string, unknown>[]> {
+  const allObjects: Record<string, unknown>[] = [];
+
+  try {
+    // 1. Find all Kiosk objects owned by this address
+    const kiosks = await getDirectlyOwnedObjects(address, '0x2::kiosk::Kiosk', false);
+
+    for (const kioskWrapper of kiosks) {
+      const kioskData = (kioskWrapper as Record<string, unknown>).data as Record<string, unknown>;
+      const kioskId = kioskData?.objectId as string;
+      if (!kioskId) continue;
+
+      // 2. Query dynamic fields of the kiosk (paginated)
+      let cursor: string | null = null;
+      while (true) {
+        const params: unknown[] = [kioskId];
+        if (cursor) params.push(cursor);
+
+        const dfResult = (await rpcCall('suix_getDynamicFields', params)) as {
+          data?: Array<Record<string, unknown>>;
+          hasNextPage?: boolean;
+          nextCursor?: string | null;
+        };
+
+        if (!dfResult.data) break;
+
+        // 3. For each dynamic field, get the object and check if it's a VOXX NFT
+        const itemIds: string[] = [];
+        for (const field of dfResult.data) {
+          // Kiosk items are stored as dynamic objects
+          const objectId = field.objectId as string;
+          if (objectId) itemIds.push(objectId);
+        }
+
+        // Batch fetch objects to check type
+        if (itemIds.length > 0) {
+          const multiResult = (await rpcCall('sui_multiGetObjects', [
+            itemIds,
+            { showType: true, showDisplay: true },
+          ])) as Record<string, unknown>[];
+
+          for (const obj of multiResult) {
+            const data = obj.data as Record<string, unknown>;
+            if (!data) continue;
+
+            // Check if this is the target NFT type
+            if (data.type === typeFilter) {
+              allObjects.push({ data });
+            }
+          }
+        }
+
+        if (!dfResult.hasNextPage || !dfResult.nextCursor) break;
+        cursor = dfResult.nextCursor;
+      }
+    }
+  } catch (err) {
+    // Kiosk scanning is best-effort — don't fail the whole sync
+    console.error('Kiosk scan error (non-fatal):', err);
+  }
+
+  return allObjects;
+}
+
+// ─── Get all owned objects (direct + kiosk) ─────────────────────
+export async function getOwnedObjects(
+  address: string,
+  typeFilter?: string,
+  lite: boolean = true
+): Promise<Record<string, unknown>[]> {
+  // 1. Directly owned NFTs
+  const direct = await getDirectlyOwnedObjects(address, typeFilter, lite);
+
+  // 2. Kiosk-owned NFTs (only if we have a type filter, since kiosk
+  //    items need to be filtered by type)
+  let kiosk: Record<string, unknown>[] = [];
+  if (typeFilter) {
+    kiosk = await getKioskOwnedObjects(address, typeFilter);
+  }
+
+  // 3. Merge, dedupe by objectId
+  const seen = new Set<string>();
+  const merged: Record<string, unknown>[] = [];
+
+  for (const obj of [...direct, ...kiosk]) {
+    const data = (obj as Record<string, unknown>).data as Record<string, unknown>;
+    const objId = data?.objectId as string;
+    if (objId && !seen.has(objId)) {
+      seen.add(objId);
+      merged.push(obj);
+    }
+  }
+
+  return merged;
+}
+
+// ─── Verify VOXX ownership (direct or kiosk) ────────────────────
+export async function verifyVoxxOwnership(
+  address: string,
+  objectId: string
+): Promise<boolean> {
+  try {
+    // Check direct ownership first
+    const owned = await getOwnedObjects(address, VOXX_TYPE, false);
+    return owned.some((obj) => {
+      const data = (obj as Record<string, unknown>).data as Record<string, unknown>;
+      return data?.objectId === objectId;
+    });
+  } catch {
+    return false;
+  }
+}
+
 // ─── Signature verification ─────────────────────────────────────
-//
-// Sui signPersonalMessage format:
-//   blake2b(intent_prefix || bcs(message))
-//   intent_prefix = [3, 0, 0]  (IntentScope::PersonalMessage)
-//   Serialized signature = flag(1) || sig(64) || pubkey(32)  (Ed25519)
-//
-// We use @mysten/sui/verify for this — it handles all scheme types.
-//
 import { verifyPersonalMessageSignature } from '@mysten/sui/verify';
 import { fromBase64 } from '@mysten/bcs';
 
