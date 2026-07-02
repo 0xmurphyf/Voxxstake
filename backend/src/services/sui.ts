@@ -3,14 +3,18 @@ import { VOXX_TYPE } from '../types';
 
 // ─── Low-level JSON-RPC call ────────────────────────────────────
 async function rpcCall(method: string, params: unknown[]): Promise<unknown> {
+  const body = { jsonrpc: '2.0', id: 1, method, params };
+  console.log(`[SUI RPC] ${method} → ${config.suiRpcUrl}`);
+  console.log(`[SUI RPC] params:`, JSON.stringify(params, null, 2));
   const res = await fetch(config.suiRpcUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`RPC error: ${res.status}`);
   const data = (await res.json()) as { error?: { message: string }; result?: unknown };
   if (data.error) throw new Error(data.error.message);
+  console.log(`[SUI RPC] ${method} → OK, result:`, JSON.stringify(data.result).slice(0, 500));
   return data.result;
 }
 
@@ -168,14 +172,17 @@ export async function getOwnedObjects(
   typeFilter?: string,
   lite: boolean = true
 ): Promise<Record<string, unknown>[]> {
+  console.log(`[SUI] getOwnedObjects called: address=${address}, type=${typeFilter}, lite=${lite}`);
   // 1. Directly owned NFTs
   const direct = await getDirectlyOwnedObjects(address, typeFilter, lite);
+  console.log(`[SUI] Direct NFTs found: ${direct.length}`);
 
   // 2. Kiosk-owned NFTs (only if we have a type filter, since kiosk
   //    items need to be filtered by type)
   let kiosk: Record<string, unknown>[] = [];
   if (typeFilter) {
     kiosk = await getKioskOwnedObjects(address, typeFilter);
+    console.log(`[SUI] Kiosk NFTs found: ${kiosk.length}`);
   }
 
   // 3. Merge, dedupe by objectId

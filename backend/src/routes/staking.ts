@@ -281,3 +281,22 @@ router.get('/nft/:objectId', authMiddleware, async (req: AuthRequest, res: Respo
 });
 
 export default router;
+
+// ─── DEBUG: GET /api/debug/nfts?address=... ─────────────────────
+// No auth required — for diagnosing NFT scanning issues
+router.get('/debug/nfts', async (req: AuthRequest, res: Response) => {
+  const { address } = req.query as { address?: string };
+  if (!address) {
+    res.status(400).json({ detail: 'Missing ?address= query param' });
+    return;
+  }
+  try {
+    console.log(`[DEBUG] Scanning NFTs for: ${address}`);
+    const nfts = await getOwnedObjects(address, VOXX_TYPE, true);
+    console.log(`[DEBUG] Found ${nfts.length} NFTs`);
+    res.json({ address, count: nfts.length, nfts });
+  } catch (err) {
+    console.error('[DEBUG] NFT scan error:', err);
+    res.status(500).json({ detail: String(err) });
+  }
+});
