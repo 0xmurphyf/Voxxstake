@@ -282,7 +282,7 @@ router.get('/nft/:objectId', authMiddleware, async (req: AuthRequest, res: Respo
 
 export default router;
 
-// ─── DEBUG: GET /api/debug/nfts?address=... ─────────────────────
+// ─── DEBUG: GET /api/staking/debug/nfts?address=... ──────────────
 router.get('/debug/nfts', async (req: AuthRequest, res: Response) => {
   const { address } = req.query as { address?: string };
   if (!address) {
@@ -291,7 +291,7 @@ router.get('/debug/nfts', async (req: AuthRequest, res: Response) => {
   }
   try {
     const nfts = await getOwnedObjects(address, VOXX_TYPE, true);
-    res.json({ address, count: nfts.length, nfts: nfts.slice(0, 5), kiosk_scan: 'v4-dynamic-object-fix', total_nfts: nfts.length });
+    res.json({ address, count: nfts.length, nfts: nfts.slice(0, 5) });
   } catch (err) {
     console.error('[DEBUG] NFT scan error:', err);
     res.status(500).json({ detail: String(err) });

@@ -4,8 +4,6 @@ import { VOXX_TYPE } from '../types';
 // ─── Low-level JSON-RPC call ────────────────────────────────────
 async function rpcCall(method: string, params: unknown[]): Promise<unknown> {
   const body = { jsonrpc: '2.0', id: 1, method, params };
-  console.log(`[SUI RPC] ${method} → ${config.suiRpcUrl}`);
-  console.log(`[SUI RPC] params:`, JSON.stringify(params, null, 2));
   const res = await fetch(config.suiRpcUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -14,7 +12,6 @@ async function rpcCall(method: string, params: unknown[]): Promise<unknown> {
   if (!res.ok) throw new Error(`RPC error: ${res.status}`);
   const data = (await res.json()) as { error?: { message: string }; result?: unknown };
   if (data.error) throw new Error(data.error.message);
-  console.log(`[SUI RPC] ${method} → OK, result:`, JSON.stringify(data.result).slice(0, 500));
   return data.result;
 }
 
@@ -109,7 +106,6 @@ async function getKioskOwnedObjects(
   try {
     // 1. Find KioskOwnerCap objects (NOT Kiosk — Kiosk is shared!)
     const caps = await getDirectlyOwnedObjects(address, '0x2::kiosk::KioskOwnerCap', false);
-    console.log(`[SUI Kiosk] Found ${caps.length} KioskOwnerCap objects`);
 
     // Extract unique Kiosk IDs from caps
     const kioskIds = new Set<string>();
@@ -120,7 +116,6 @@ async function getKioskOwnedObjects(
       const kioskId = fields?.for as string;
       if (kioskId) kioskIds.add(kioskId);
     }
-    console.log(`[SUI Kiosk] Unique Kiosk IDs: ${kioskIds.size}`);
 
     for (const kioskId of kioskIds) {
 
@@ -185,17 +180,14 @@ export async function getOwnedObjects(
   typeFilter?: string,
   lite: boolean = true
 ): Promise<Record<string, unknown>[]> {
-  console.log(`[SUI] getOwnedObjects called: address=${address}, type=${typeFilter}, lite=${lite}`);
   // 1. Directly owned NFTs
   const direct = await getDirectlyOwnedObjects(address, typeFilter, lite);
-  console.log(`[SUI] Direct NFTs found: ${direct.length}`);
 
   // 2. Kiosk-owned NFTs (only if we have a type filter, since kiosk
   //    items need to be filtered by type)
   let kiosk: Record<string, unknown>[] = [];
   if (typeFilter) {
     kiosk = await getKioskOwnedObjects(address, typeFilter);
-    console.log(`[SUI] Kiosk NFTs found: ${kiosk.length}`);
   }
 
   // 3. Merge, dedupe by objectId
@@ -211,7 +203,6 @@ export async function getOwnedObjects(
     }
   }
 
-  console.log(`[SUI] Total NFTs after merge: ${merged.length}`);
   return merged;
 }
 
