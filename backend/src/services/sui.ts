@@ -93,9 +93,10 @@ async function getDirectlyOwnedObjects(
 // ─── Get Kiosk-owned NFTs for an address ────────────────────────
 //
 // Sui Kiosk: NFTs placed in a Kiosk are owned by the Kiosk object,
-// not the address directly. To find them:
-//   1. Find all Kiosk objects owned by the address
-//      (type: 0x2::kiosk::Kiosk)
+// not the address directly. Kiosk is a *shared object* so
+// suix_getOwnedObjects won't find it. Instead:
+//   1. Find KioskOwnerCap objects owned by the address
+//      (type: 0x2::kiosk::KioskOwnerCap) → read content.fields.for
 //   2. For each Kiosk, query dynamic fields to list items inside
 //   3. Filter items by VOXX type
 //
@@ -106,13 +107,22 @@ async function getKioskOwnedObjects(
   const allObjects: Record<string, unknown>[] = [];
 
   try {
-    // 1. Find all Kiosk objects owned by this address
-    const kiosks = await getDirectlyOwnedObjects(address, '0x2::kiosk::Kiosk', false);
+    // 1. Find KioskOwnerCap objects (NOT Kiosk — Kiosk is shared!)
+    const caps = await getDirectlyOwnedObjects(address, '0x2::kiosk::KioskOwnerCap', false);
+    console.log(`[SUI Kiosk] Found ${caps.length} KioskOwnerCap objects`);
 
-    for (const kioskWrapper of kiosks) {
-      const kioskData = (kioskWrapper as Record<string, unknown>).data as Record<string, unknown>;
-      const kioskId = kioskData?.objectId as string;
-      if (!kioskId) continue;
+    // Extract unique Kiosk IDs from caps
+    const kioskIds = new Set<string>();
+    for (const capWrapper of caps) {
+      const capData = (capWrapper as Record<string, unknown>).data as Record<string, unknown>;
+      const content = capData?.content as Record<string, unknown> | undefined;
+      const fields = content?.fields as Record<string, unknown> | undefined;
+      const kioskId = fields?.for as string;
+      if (kioskId) kioskIds.add(kioskId);
+    }
+    console.log(`[SUI Kiosk] Unique Kiosk IDs: ${kioskIds.size}`);
+
+    for (const kioskId of kioskIds) {
 
       // 2. Query dynamic fields of the kiosk (paginated)
       let cursor: string | null = null;
