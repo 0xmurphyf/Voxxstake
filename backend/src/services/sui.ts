@@ -208,6 +208,7 @@ export async function getOwnedObjects(
     }
   }
 
+  console.log(`[SUI] Total NFTs after merge: ${merged.length}`);
   return merged;
 }
 
