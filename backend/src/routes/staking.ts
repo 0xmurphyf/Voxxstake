@@ -291,7 +291,7 @@ router.get('/debug/nfts', async (req: AuthRequest, res: Response) => {
   }
   try {
     const nfts = await getOwnedObjects(address, VOXX_TYPE, true);
-    res.json({ address, count: nfts.length, nfts: nfts.slice(0, 5), kiosk_scan: 'v3', total_nfts: nfts.length });
+    res.json({ address, count: nfts.length, nfts: nfts.slice(0, 5), kiosk_scan: 'v4-dynamic-object-fix', total_nfts: nfts.length });
   } catch (err) {
     console.error('[DEBUG] NFT scan error:', err);
     res.status(500).json({ detail: String(err) });
