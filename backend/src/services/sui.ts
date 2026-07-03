@@ -141,9 +141,12 @@ async function getKioskOwnedObjects(
         // 3. For each dynamic field, get the object and check if it's a VOXX NFT
         const itemIds: string[] = [];
         for (const field of dfResult.data) {
-          // Kiosk items are stored as dynamic objects
-          const objectId = field.objectId as string;
-          if (objectId) itemIds.push(objectId);
+          // Only DynamicObject fields point to actual NFT objects.
+          // DynamicField (e.g. Lock, Listing) are kiosk internals.
+          if (field.type === 'DynamicObject') {
+            const objectId = field.objectId as string;
+            if (objectId) itemIds.push(objectId);
+          }
         }
 
         // Batch fetch objects to check type
