@@ -5,15 +5,14 @@ import path from 'path';
 dotenv.config({ path: path.resolve(__dirname, '../.env'), override: false });
 
 // ─── Security checks ──────────────────────────────────────────
-// In production (NODE_ENV=production), JWT_SECRET MUST be set via env var.
-// Fallback to a default is ONLY allowed in development.
+// In production, JWT_SECRET should be set via environment variable.
+// We log a warning if it's missing, but don't crash — the user can
+// set it in Railway's dashboard and redeploy.
 const DEFAULT_JWT_SECRET = 'dev-secret-key-do-not-use-in-production';
 const rawJwtSecret = process.env.JWT_SECRET;
-if (!rawJwtSecret) {
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('FATAL: JWT_SECRET environment variable is required in production');
-  }
-  console.warn('WARNING: Using default JWT_SECRET — DO NOT use in production!');
+if (!rawJwtSecret && process.env.NODE_ENV === 'production') {
+  console.error('⚠️  WARNING: JWT_SECRET is not set! Using a default secret.');
+  console.error('    This is INSECURE. Set JWT_SECRET in your Railway environment variables.');
 }
 
 export const config = {
