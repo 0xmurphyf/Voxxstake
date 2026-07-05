@@ -282,7 +282,6 @@ function App() {
               </button>
             </div>
           )}
-          <span className="nav-status hidden md:block flicker">[ ONLINE ]</span>
         </div>
       </nav>
 

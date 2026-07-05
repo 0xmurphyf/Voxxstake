@@ -140,8 +140,8 @@ export function IDCard({ positions, stats, walletAddress, authToken }) {
         <div style={{ flexShrink: 0 }}>
           <div
             style={{
-              width: 140, height: 140,
-              border: '2px solid rgba(0,255,204,0.45)',
+              width: 240, height: 240,
+              border: '3px solid rgba(0,255,204,0.5)',
               background: 'rgba(0,15,20,0.8)',
               overflow: 'hidden',
               position: 'relative',
@@ -158,7 +158,7 @@ export function IDCard({ positions, stats, walletAddress, authToken }) {
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 background: 'rgba(0,255,204,0.05)',
               }}>
-                <IdentificationBadge size={56} weight="light" style={{ color: 'rgba(0,255,204,0.3)' }} />
+                <IdentificationBadge size={80} weight="light" style={{ color: 'rgba(0,255,204,0.3)' }} />
               </div>
             )}
             {activePositions.length > 0 && (
