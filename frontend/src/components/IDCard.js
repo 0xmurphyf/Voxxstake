@@ -15,7 +15,7 @@ function formatDuration(days) {
   return `${days.toFixed(1)}d`;
 }
 
-export function IDCard({ positions, stats, walletAddress, authToken }) {
+export function IDCard({ positions, stats, walletAddress, authToken, balance }) {
   const activePositions = positions?.filter(p => p.status === 'active') || [];
   const totalNfts = stats?.nft_count || activePositions.length || 0;
   const totalCredits = (stats?.total_lore_points || 0).toFixed(0);
@@ -276,11 +276,19 @@ export function IDCard({ positions, stats, walletAddress, authToken }) {
             </div>
           </div>
 
-          <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid rgba(0,255,204,0.1)' }}>
-            <span className="hud-label" style={{ fontSize: '0.62rem' }}>WALLET</span>
-            <p className="mono text-xs" style={{ color: 'rgba(0,255,204,0.5)' }}>
-              {walletAddress ? `${walletAddress.slice(0, 14)}...${walletAddress.slice(-6)}` : '—'}
-            </p>
+          <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid rgba(0,255,204,0.1)', display: 'flex', gap: 32 }}>
+            <div>
+              <span className="hud-label" style={{ fontSize: '0.62rem' }}>BALANCE</span>
+              <p className="mono text-xs" style={{ color: '#00FF88', fontWeight: 600 }}>
+                {balance !== null ? `${balance} SUI` : '...'}
+              </p>
+            </div>
+            <div>
+              <span className="hud-label" style={{ fontSize: '0.62rem' }}>WALLET</span>
+              <p className="mono text-xs" style={{ color: 'rgba(0,255,204,0.5)' }}>
+                {walletAddress ? `${walletAddress.slice(0, 14)}...${walletAddress.slice(-6)}` : '—'}
+              </p>
+            </div>
           </div>
         </div>
       </div>

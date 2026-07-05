@@ -20,7 +20,7 @@ import {
 /* ============================================================
    LANDING PAGE — Neoterra Citizenship Registry
    ============================================================ */
-function HomePage({ authToken, login, isAuthenticating, authError, logout, loadToken }) {
+function HomePage({ authToken, login, isAuthenticating, authError, logout, loadToken, balance }) {
   const wallet = useWallet();
   const { positions, stats, sellAlerts, loading, syncing } = useStaking(authToken);
   const [activeTab, setActiveTab] = useState('nfts');
@@ -201,6 +201,7 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
             stats={stats}
             walletAddress={wallet.account?.address}
             authToken={authToken}
+            balance={balance}
           />
 
           {/* Stats Cards */}
@@ -262,25 +263,15 @@ function App() {
         </button>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
           {authToken && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              {balance !== null && (
-                <span className="mono text-xs" style={{ color: '#00FF88', letterSpacing: '0.04em' }}>
-                  {balance} SUI
-                </span>
-              )}
-              <span className="mono text-xs" style={{ color: 'rgba(0,255,204,0.6)', letterSpacing: '0.04em' }}>
-                {wallet.account?.address?.slice(0, 10)}...{wallet.account?.address?.slice(-6)}
-              </span>
-              <button
-                onClick={handleLogout}
-                className="wallet-connect-btn"
-                style={{ padding: '6px 14px', fontSize: '0.65rem', letterSpacing: '0.12em' }}
-                data-testid="logout-button"
-              >
-                <SignOut size={12} weight="bold" />
-                DISCONNECT
-              </button>
-            </div>
+            <button
+              onClick={handleLogout}
+              className="wallet-connect-btn"
+              style={{ padding: '6px 14px', fontSize: '0.65rem', letterSpacing: '0.12em' }}
+              data-testid="logout-button"
+            >
+              <SignOut size={12} weight="bold" />
+              DISCONNECT
+            </button>
           )}
         </div>
       </nav>
@@ -296,6 +287,7 @@ function App() {
               loadToken={loadToken}
               isAuthenticating={isAuthenticating}
               authError={authError}
+              balance={balance}
             />
           } />
           <Route path="/nft/:objectId" element={
