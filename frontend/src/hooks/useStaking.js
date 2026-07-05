@@ -8,10 +8,11 @@ export function useStaking(authToken) {
   const [positions, setPositions] = useState([]);
   const [stats, setStats] = useState(null);
   const [sellAlerts, setSellAlerts] = useState([]);
-  const [loading, setLoading] = useState(false); // initial cached-data load
-  const [syncing, setSyncing] = useState(false); // background RPC sync
+  const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState(null);
-  const initialLoadDone = useRef(false);
+  // Track which token we've loaded for, so we reload when token changes
+  const loadedTokenRef = useRef(null);
 
   const applyResponse = (data) => {
     setPositions(data.positions || []);
@@ -20,6 +21,8 @@ export function useStaking(authToken) {
       total_active: data.total_active || 0,
       total_paused: data.total_paused || 0,
       total_lore_points: data.total_lore_points || 0,
+      nft_count: data.nft_count || 0,
+      holding_multiplier: data.holding_multiplier || 1.0,
     });
   };
 
@@ -34,7 +37,6 @@ export function useStaking(authToken) {
       applyResponse(r.data);
     } catch (err) {
       console.error('Failed to load cached stakes:', err);
-      // Don't surface this error — we'll fall back to sync
     } finally {
       setLoading(false);
     }
@@ -59,17 +61,22 @@ export function useStaking(authToken) {
     }
   }, [authToken]);
 
-  // On login: load cached instantly, then sync in background
+  // Load cached data immediately when token is available, then sync
   useEffect(() => {
     if (!authToken) {
-      initialLoadDone.current = false;
-      setPositions([]);
-      setStats(null);
-      setSellAlerts([]);
+      // Only clear data if we previously had a token (actual logout)
+      if (loadedTokenRef.current) {
+        setPositions([]);
+        setStats(null);
+        setSellAlerts([]);
+        loadedTokenRef.current = null;
+      }
       return;
     }
-    if (initialLoadDone.current) return;
-    initialLoadDone.current = true;
+
+    // Skip if we've already loaded for this exact token
+    if (loadedTokenRef.current === authToken) return;
+    loadedTokenRef.current = authToken;
 
     let cancelled = false;
     (async () => {

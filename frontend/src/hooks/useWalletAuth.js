@@ -7,19 +7,20 @@ const API = `${BACKEND_URL}/api`;
 
 export function useWalletAuth() {
   const wallet = useWallet();
+  // CRITICAL: On first render, immediately restore token from localStorage.
+  // This is the core of persistence — the user should see their dashboard
+  // even before the wallet extension reconnects.
   const [authToken, setAuthToken] = useState(() => {
-    // Initialize from localStorage on first render — survives page close
     return localStorage.getItem('sui_auth_token') || null;
   });
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [authError, setAuthError] = useState(null);
 
-  // When wallet connects after page reload, check if we already have a token
-  // If so, the user is already authenticated — no need to re-sign
+  // When wallet auto-connects on page load (some wallets do), sync the token.
   useEffect(() => {
     if (wallet.connected) {
       const existing = localStorage.getItem('sui_auth_token');
-      if (existing && !authToken) {
+      if (existing) {
         setAuthToken(existing);
       }
     }
@@ -41,15 +42,12 @@ export function useWalletAuth() {
 
       const messageBytes = new TextEncoder().encode(nonce);
 
-      // Modern Sui wallets implement signPersonalMessage (sui:signPersonalMessage)
-      // Fall back to signMessage for older wallets
       const signFn = wallet.signPersonalMessage || wallet.signMessage;
       if (!signFn) {
         throw new Error('Connected wallet does not support message signing');
       }
 
       const signResult = await signFn({ message: messageBytes });
-      // signResult: { bytes: base64String, signature: base64String }
 
       const verifyRes = await axios.post(`${API}/auth/verify`, {
         address: wallet.account.address,
@@ -78,7 +76,10 @@ export function useWalletAuth() {
   const logout = useCallback(() => {
     setAuthToken(null);
     localStorage.removeItem('sui_auth_token');
-  }, []);
+    if (wallet.connected) {
+      wallet.disconnect();
+    }
+  }, [wallet]);
 
   const loadToken = useCallback(() => {
     const token = localStorage.getItem('sui_auth_token');

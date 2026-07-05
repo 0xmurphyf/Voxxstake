@@ -5,6 +5,79 @@ import { VOXX_TYPE } from '../types';
 const RPC_URLS = [config.suiRpcUrl, ...config.suiRpcFailoverUrls].filter(Boolean);
 const RPC_TIMEOUT_MS = config.suiRpcTimeoutMs;
 
+// ─── IPFS gateway conversion ────────────────────────────────────
+const IPFS_GATEWAYS = [
+  'https://ipfs.io/ipfs/',
+  'https://cloudflare-ipfs.com/ipfs/',
+  'https://gateway.pinata.cloud/ipfs/',
+];
+
+/**
+ * Convert ipfs:// URL to an HTTPS gateway URL.
+ * Falls back through multiple gateways.
+ */
+export function ipfsToHttps(ipfsUrl: string): string {
+  const cid = ipfsUrl.replace(/^ipfs:\/\//, '').replace(/^ipfs\//, '');
+  return `${IPFS_GATEWAYS[0]}${cid}`;
+}
+
+/**
+ * Extract image URL from an NFT object's data, trying multiple sources.
+ * Sui Display standard → content.fields.media_url → content.fields.url
+ */
+export function extractImageUrl(objData: Record<string, unknown> | null | undefined): string | null {
+  if (!objData) return null;
+
+  // 1. Sui Display standard: data.display.data.image_url
+  const display = (objData.display as Record<string, unknown> | undefined);
+  const displayData = display?.data as Record<string, unknown> | undefined;
+  if (displayData?.image_url) {
+    const url = String(displayData.image_url);
+    return url.startsWith('ipfs://') ? ipfsToHttps(url) : url;
+  }
+
+  // 2. Content fields: media_url (used by VOXX NFTs)
+  const content = (objData.content as Record<string, unknown> | undefined);
+  const fields = content?.fields as Record<string, unknown> | undefined;
+  if (fields?.media_url) {
+    const url = String(fields.media_url);
+    return url.startsWith('ipfs://') ? ipfsToHttps(url) : url;
+  }
+
+  // 3. Content fields: url
+  if (fields?.url) {
+    const url = String(fields.url);
+    return url.startsWith('ipfs://') ? ipfsToHttps(url) : url;
+  }
+
+  // 4. Content fields: image_url
+  if (fields?.image_url) {
+    const url = String(fields.image_url);
+    return url.startsWith('ipfs://') ? ipfsToHttps(url) : url;
+  }
+
+  return null;
+}
+
+/**
+ * Extract name from an NFT object's data.
+ */
+export function extractNftName(objData: Record<string, unknown> | null | undefined, objectId: string): string {
+  if (!objData) return `VOXX #${objectId.slice(-6)}`;
+
+  // Sui Display
+  const display = (objData.display as Record<string, unknown> | undefined);
+  const displayData = display?.data as Record<string, unknown> | undefined;
+  if (displayData?.name) return String(displayData.name);
+
+  // Content fields
+  const content = (objData.content as Record<string, unknown> | undefined);
+  const fields = content?.fields as Record<string, unknown> | undefined;
+  if (fields?.name) return String(fields.name);
+
+  return `VOXX #${objectId.slice(-6)}`;
+}
+
 // ─── Low-level JSON-RPC call with failover ──────────────────────
 async function rpcCall(method: string, params: unknown[]): Promise<unknown> {
   const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method, params });
@@ -78,13 +151,15 @@ export async function getNftMetadata(
   const content =
     ((data.content as Record<string, unknown>)?.fields as Record<string, unknown>) || {};
 
+  const rawImageUrl = extractImageUrl(data);
+
   return {
     object_id: objectId,
     type: data.type,
     owner: data.owner,
     name: display.name || content.name || `VOXX #${objectId.slice(-6)}`,
     description: display.description || content.description || 'VOXX Inc. Genesis NFT',
-    image_url: display.image_url || content.image_url || content.url || null,
+    image_url: rawImageUrl,
     project_url: display.project_url || null,
     attributes: content.attributes || {},
     raw_content: content,
@@ -100,9 +175,12 @@ async function getDirectlyOwnedObjects(
   const allObjects: Record<string, unknown>[] = [];
   let cursor: string | null = null;
 
-  const options: Record<string, boolean> = { showType: true, showDisplay: true };
+  const options: Record<string, boolean> = { showType: true, showDisplay: true, showContent: true };
+  if (lite) {
+    // Even in lite mode, we need content for image_url extraction
+    // (VOXX NFTs store image in content.fields.media_url, not display.data.image_url)
+  }
   if (!lite) {
-    options.showContent = true;
     options.showOwner = true;
   }
 
@@ -228,7 +306,7 @@ async function getKioskOwnedObjects(
         if (itemIds.length > 0) {
           const multiResult = (await rpcCall('sui_multiGetObjects', [
             itemIds,
-            { showType: true, showDisplay: true },
+            { showType: true, showDisplay: true, showContent: true },
           ])) as Record<string, unknown>[];
 
           for (const obj of multiResult) {

@@ -1,5 +1,5 @@
 import { Stake } from '../models/Stake';
-import { getOwnedObjects } from './sui';
+import { getOwnedObjects, extractImageUrl, extractNftName } from './sui';
 import { VOXX_TYPE } from '../types';
 import { config } from '../config';
 
@@ -49,10 +49,9 @@ async function syncAllAddresses(): Promise<void> {
           if (!objId) continue;
           ownedSet.add(objId);
 
-          const display = ((data.display as Record<string, unknown>)?.data || {}) as Record<string, unknown>;
           ownedMeta.set(objId, {
-            name: (display.name as string) || `VOXX #${objId.slice(-6)}`,
-            image_url: (display.image_url as string) || null,
+            name: extractNftName(data, objId),
+            image_url: extractImageUrl(data),
           });
         }
 

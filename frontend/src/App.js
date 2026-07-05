@@ -24,6 +24,12 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
   const { positions, stats, sellAlerts, loading, syncing } = useStaking(authToken);
   const [activeTab, setActiveTab] = useState('nfts');
 
+  // On mount: restore token immediately from localStorage.
+  // When wallet connects later, loadToken ensures consistency.
+  useEffect(() => {
+    loadToken();
+  }, []); // eslint-disable-line
+
   useEffect(() => {
     if (wallet.connected) loadToken();
     // IMPORTANT: do NOT call logout() when wallet disconnects.

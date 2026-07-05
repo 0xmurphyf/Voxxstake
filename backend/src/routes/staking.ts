@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { Stake } from '../models/Stake';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
-import { getOwnedObjects, getNftMetadata } from '../services/sui';
+import { getOwnedObjects, getNftMetadata, extractImageUrl, extractNftName } from '../services/sui';
 import {
   buildPositionFromStake,
   buildStatsFromPositions,
@@ -52,10 +52,9 @@ async function syncStakesForAddress(
     const data = (nft as Record<string, unknown>).data as Record<string, unknown>;
     const objId = data?.objectId as string;
     if (!objId) continue;
-    const display = ((data.display as Record<string, unknown>)?.data || {}) as Record<string, unknown>;
     ownedMap.set(objId, {
-      name: (display.name as string) || `VOXX #${objId.slice(-6)}`,
-      image_url: (display.image_url as string) || null,
+      name: extractNftName(data, objId),
+      image_url: extractImageUrl(data),
     });
   }
 
