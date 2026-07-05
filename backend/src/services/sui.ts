@@ -135,8 +135,10 @@ async function getDirectlyOwnedObjects(
 // Sui Kiosk: NFTs placed in a Kiosk are owned by the Kiosk object,
 // not the address directly. Kiosk is a *shared object* so
 // suix_getOwnedObjects won't find it. Instead:
-//   1. Find KioskOwnerCap objects owned by the address
-//      (type: 0x2::kiosk::KioskOwnerCap) → read content.fields.for
+//   1a. Find KioskOwnerCap objects owned by the address
+//       (type: 0x2::kiosk::KioskOwnerCap) → read content.fields.for
+//   1b. Also find PersonalKioskCap objects
+//       (type: <PKG>::personal_kiosk::PersonalKioskCap) → read content.fields.cap.fields.for
 //   2. For each Kiosk, query dynamic fields to list items inside
 //   3. Filter items by VOXX type
 //
@@ -147,17 +149,40 @@ async function getKioskOwnedObjects(
   const allObjects: Record<string, unknown>[] = [];
 
   try {
-    // 1. Find KioskOwnerCap objects (NOT Kiosk — Kiosk is shared!)
-    const caps = await getDirectlyOwnedObjects(address, '0x2::kiosk::KioskOwnerCap', false);
-
-    // Extract unique Kiosk IDs from caps
-    const kioskIds = new Set<string>();
-    for (const capWrapper of caps) {
+    // Helper: extract Kiosk ID from a cap wrapper
+    const extractKioskId = (capWrapper: Record<string, unknown>): string | null => {
       const capData = (capWrapper as Record<string, unknown>).data as Record<string, unknown>;
       const content = capData?.content as Record<string, unknown> | undefined;
       const fields = content?.fields as Record<string, unknown> | undefined;
-      const kioskId = fields?.for as string;
-      if (kioskId) kioskIds.add(kioskId);
+      // Standard KioskOwnerCap: fields.for
+      const directFor = fields?.for as string | undefined;
+      if (directFor) return directFor;
+      // PersonalKioskCap: fields.cap.fields.for (nested wrapper)
+      const cap = fields?.cap as Record<string, unknown> | undefined;
+      const capFields = cap?.fields as Record<string, unknown> | undefined;
+      const nestedFor = capFields?.for as string | undefined;
+      return nestedFor || null;
+    };
+
+    // 1a. Find standard KioskOwnerCap objects
+    const standardCaps = await getDirectlyOwnedObjects(address, '0x2::kiosk::KioskOwnerCap', false);
+
+    // 1b. Also scan for PersonalKioskCap wrappers.
+    // These have type <pkg>::personal_kiosk::PersonalKioskCap and wrap a
+    // KioskOwnerCap inside fields.cap.fields.for. We find them by doing a
+    // broad scan of ALL owned objects (unfiltered) and checking each one's
+    // content structure for a nested "for" field.
+    //
+    // Performance note: for most users this adds a small overhead, but for
+    // whales with thousands of objects it can be slow. The broad scan is
+    // done once and the kiosk IDs are deduplicated.
+    const allCaps = await getDirectlyOwnedObjects(address, undefined, false);
+
+    // Extract unique Kiosk IDs from all cap wrappers
+    const kioskIds = new Set<string>();
+    for (const wrapper of allCaps) {
+      const kid = extractKioskId(wrapper);
+      if (kid) kioskIds.add(kid);
     }
 
     for (const kioskId of kioskIds) {
