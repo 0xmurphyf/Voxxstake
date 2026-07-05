@@ -309,6 +309,16 @@ export async function verifyVoxxOwnership(
 // ─── Signature verification ─────────────────────────────────────
 import { verifyPersonalMessageSignature } from '@mysten/sui/verify';
 import { fromBase64 } from '@mysten/bcs';
+import { SuiClient } from '@mysten/sui/client';
+
+// Reuse a single SuiClient for zkLogin verification (needs RPC for JWK/epoch lookups)
+let _verificationClient: SuiClient | null = null;
+function getVerificationClient(): SuiClient {
+  if (!_verificationClient) {
+    _verificationClient = new SuiClient({ url: config.suiRpcUrl });
+  }
+  return _verificationClient;
+}
 
 export async function verifySignature(
   address: string,
@@ -318,11 +328,14 @@ export async function verifySignature(
 ): Promise<boolean> {
   try {
     const messageBytes = fromBase64(bytesB64);
+    // Pass a SuiClient for zkLogin verification (Google ZKP wallet needs RPC)
     await verifyPersonalMessageSignature(messageBytes, signatureB64, {
       address,
+      client: { core: getVerificationClient() as any },
     });
     return true;
-  } catch {
+  } catch (err) {
+    console.error('Signature verification failed:', err instanceof Error ? err.message : err);
     return false;
   }
 }
