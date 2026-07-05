@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { IdentificationBadge, CheckCircle, PencilSimple, Lightning } from '@phosphor-icons/react';
+import { IdentificationBadge, CheckCircle, PencilSimple, FloppyDisk, X } from '@phosphor-icons/react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
 const API = `${BACKEND_URL}/api`;
@@ -32,6 +32,11 @@ export function IDCard({ positions, stats, walletAddress, authToken }) {
   const [pfpValid, setPfpValid] = useState(true);
   const [checkingPfp, setCheckingPfp] = useState(false);
 
+  // Name state
+  const [displayName, setDisplayName] = useState(() => localStorage.getItem('neoterra_name') || '');
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState(displayName);
+
   // Verify PFP is still held on-chain
   const verifyPfp = useCallback(async (objectId) => {
     if (!authToken || !objectId) return false;
@@ -56,7 +61,6 @@ export function IDCard({ positions, stats, walletAddress, authToken }) {
     if (stored && storedId) {
       verifyPfp(storedId).then(valid => {
         if (!valid) {
-          // NFT no longer held — clear PFP
           setPfpUrl(null);
           setPfpValid(false);
           localStorage.removeItem('neoterra_pfp');
@@ -77,14 +81,22 @@ export function IDCard({ positions, stats, walletAddress, authToken }) {
     setSelectingPfp(false);
   };
 
-  // Generate temp ID: NTR-XXXXXX from address
+  const saveName = () => {
+    const trimmed = nameDraft.trim();
+    setDisplayName(trimmed);
+    localStorage.setItem('neoterra_name', trimmed);
+    setEditingName(false);
+  };
+
+  const cancelEditName = () => {
+    setNameDraft(displayName);
+    setEditingName(false);
+  };
+
+  // Generate temp ID
   const tempId = walletAddress
     ? `NTR-${walletAddress.slice(2, 8).toUpperCase()}`
     : 'NTR-000000';
-
-  const registeredDate = activePositions.length > 0
-    ? new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-    : '—';
 
   return (
     <div className="term-panel p-5 sm:p-6 mb-5" data-testid="id-card">
@@ -139,16 +151,63 @@ export function IDCard({ positions, stats, walletAddress, authToken }) {
 
         {/* ID Details */}
         <div style={{ flex: 1, minWidth: 220 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-            <IdentificationBadge size={20} weight="fill" style={{ color: '#00FFCC' }} />
-            <span className="mono text-sm" style={{ color: '#00FFCC', letterSpacing: '0.15em' }}>{tempId}</span>
+          {/* Name row */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <IdentificationBadge size={18} weight="fill" style={{ color: '#00FFCC', flexShrink: 0 }} />
+            {editingName ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1 }}>
+                <input
+                  type="text"
+                  value={nameDraft}
+                  onChange={(e) => setNameDraft(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') cancelEditName(); }}
+                  placeholder="Enter your name..."
+                  maxLength={32}
+                  autoFocus
+                  className="term-input"
+                  style={{
+                    fontSize: '0.85rem',
+                    padding: '4px 10px',
+                    maxWidth: 220,
+                    color: '#fff',
+                    fontWeight: 600,
+                  }}
+                  data-testid="name-input"
+                />
+                <button onClick={saveName} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#00FFCC', padding: 2 }} data-testid="save-name-button">
+                  <FloppyDisk size={16} weight="bold" />
+                </button>
+                <button onClick={cancelEditName} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(0,255,204,0.5)', padding: 2 }} data-testid="cancel-name-button">
+                  <X size={16} weight="bold" />
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="mono text-sm" style={{ color: displayName ? '#fff' : 'rgba(0,255,204,0.35)', letterSpacing: '0.1em', fontWeight: displayName ? 600 : 400 }}>
+                  {displayName || 'ANONYMOUS APPLICANT'}
+                </span>
+                <button
+                  onClick={() => { setNameDraft(displayName); setEditingName(true); }}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(0,255,204,0.4)', padding: 2 }}
+                  title="Edit name"
+                  data-testid="edit-name-button"
+                >
+                  <PencilSimple size={13} weight="bold" />
+                </button>
+              </div>
+            )}
             {pfpValid && pfpUrl && (
-              <span className="status-badge badge-active" style={{ fontSize: '0.6rem' }}>
+              <span className="status-badge badge-active" style={{ fontSize: '0.6rem', flexShrink: 0 }}>
                 <CheckCircle size={10} weight="fill" />
                 VERIFIED
               </span>
             )}
           </div>
+
+          {/* ID number */}
+          <p className="mono text-xs mb-3" style={{ color: 'rgba(0,255,204,0.45)', letterSpacing: '0.12em' }}>
+            {tempId}
+          </p>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 24px' }}>
             <div>

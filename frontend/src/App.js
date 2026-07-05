@@ -205,10 +205,7 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
         /* ===== AUTHENTICATED: Dashboard ===== */
         <>
           {/* Status bar with logout */}
-          <div className="term-panel p-4 mb-5" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-            <div className="mono text-xs" style={{ color: '#00FF88' }}>
-              {syncing ? <>SYNCING<span className="ml-1" style={{ animation: 'pulse-dot 1s infinite', display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#00FF88', verticalAlign: 'middle' }} /> </> : 'LIVE'} &nbsp;|&nbsp; NEOTERRA REGISTRY
-            </div>
+          <div className="term-panel p-4 mb-5" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
               <span className="mono text-xs" style={{ color: 'rgba(0,255,204,0.7)' }}>
                 {wallet.account?.address?.slice(0, 10)}...{wallet.account?.address?.slice(-6)}
