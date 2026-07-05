@@ -309,17 +309,20 @@ export async function verifyVoxxOwnership(
 // ─── Signature verification ─────────────────────────────────────
 import { verifyPersonalMessageSignature } from '@mysten/sui/verify';
 import { fromBase64 } from '@mysten/bcs';
-import { SuiClient } from '@mysten/sui/client';
 
-// Reuse a single SuiClient for zkLogin verification (needs RPC for JWK/epoch lookups)
-let _verificationClient: SuiClient | null = null;
-function getVerificationClient(): SuiClient {
-  if (!_verificationClient) {
-    _verificationClient = new SuiClient({ url: config.suiRpcUrl });
-  }
-  return _verificationClient;
-}
+// Signature flag byte for zkLogin (from SIGNATURE_SCHEME_TO_FLAG.ZkLogin = 0x05)
+const ZKLOGIN_FLAG = 0x05;
 
+/**
+ * Verify a Sui wallet signature for a personal message (nonce).
+ *
+ * For standard wallets (Ed25519, Secp256k1, Secp256r1, Passkey, MultiSig):
+ *   uses @mysten/sui/verify which handles them natively.
+ *
+ * For zkLogin (Google ZKP) wallets:
+ *   uses the Sui RPC method sui_verifyZkLoginSignature directly, because
+ *   @mysten/sui v2 requires a GraphQL/gRPC client for zkLogin verification.
+ */
 export async function verifySignature(
   address: string,
   _nonce: string,
@@ -327,12 +330,28 @@ export async function verifySignature(
   bytesB64: string
 ): Promise<boolean> {
   try {
+    const signatureBytes = fromBase64(signatureB64);
+
+    // Check if this is a zkLogin signature (first byte = 0x05)
+    if (signatureBytes.length > 0 && signatureBytes[0] === ZKLOGIN_FLAG) {
+      // Use RPC directly for zkLogin verification
+      const result = await rpcCall('sui_verifyZkLoginSignature', [
+        bytesB64,               // bytes (base64)
+        signatureB64,           // signature (base64)
+        'PersonalMessage',      // intent_scope
+        address,                // author
+      ]) as { success?: boolean; errors?: unknown[] };
+
+      if (!result.success || (result.errors && result.errors.length > 0)) {
+        console.error('zkLogin verification failed:', JSON.stringify(result.errors));
+        return false;
+      }
+      return true;
+    }
+
+    // Standard signature verification (Ed25519, Secp256k1, etc.)
     const messageBytes = fromBase64(bytesB64);
-    // Pass a SuiClient for zkLogin verification (Google ZKP wallet needs RPC)
-    await verifyPersonalMessageSignature(messageBytes, signatureB64, {
-      address,
-      client: { core: getVerificationClient() as any },
-    });
+    await verifyPersonalMessageSignature(messageBytes, signatureB64, { address });
     return true;
   } catch (err) {
     console.error('Signature verification failed:', err instanceof Error ? err.message : err);
