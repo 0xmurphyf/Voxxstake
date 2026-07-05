@@ -444,6 +444,15 @@ body::before {
   box-shadow: 0 0 6px rgba(0, 255, 204, 0.6);
 }
 
+/* Override suiet wallet-kit default blue background */
+.wkit-connect-button,
+.wkit-button,
+[class*="wkit-connect"] {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+}
+
 .wallet-connected-info {
   display: inline-flex;
   align-items: center;

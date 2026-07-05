@@ -81,7 +81,7 @@ export function WaitingList({ authToken }) {
           <span className="hud-value text-sm">CITIZENSHIP WAITING LIST</span>
         </div>
         <span className="mono text-xs" style={{ color: 'rgba(0,255,204,0.6)' }}>
-          {totalStakers} REGISTERED CITIZENS
+          {totalStakers} REGISTERED APPLICANTS
         </span>
       </div>
 
@@ -96,7 +96,7 @@ export function WaitingList({ authToken }) {
           }}
         >
           <span className="hud-label text-center">#</span>
-          <span className="hud-label">CITIZEN</span>
+          <span className="hud-label">APPLICANT</span>
           <span className="hud-label text-center">CREDENTIALS</span>
           <span className="hud-label text-center">RATE</span>
           <span className="hud-label text-center">REGISTERED</span>

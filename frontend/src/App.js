@@ -9,6 +9,7 @@ import { StatsCards } from './components/StatsCards';
 import { NFTList } from './components/NFTList';
 import { NFTDetail } from './components/NFTDetail';
 import { WaitingList } from './components/WaitingList';
+import { IDCard } from './components/IDCard';
 import {
   Cube, ListNumbers, Cpu,
   Wallet, ShieldCheck, Fingerprint, IdentificationBadge, Clock, Scales,
@@ -30,16 +31,6 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
   useEffect(() => {
     if (wallet.connected) loadToken();
   }, [wallet.connected]); // eslint-disable-line
-
-  /* ---- Derived data ---- */
-  const totalNfts = stats?.nft_count || positions?.filter(p => p.status === 'active').length || 0;
-  const totalPoints = (stats?.total_lore_points || 0).toFixed(0);
-  const multiplier = stats?.holding_multiplier || 1.0;
-  const pointsPerHour = (totalNfts * multiplier).toFixed(1);
-  const maxDuration = positions?.reduce((max, p) => {
-    if (p.status === 'active' && (p.duration_days || 0) > max) return p.duration_days;
-    return max;
-  }, 0) || 0;
 
   const handleLogout = () => {
     logout();
@@ -77,8 +68,6 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
             {/* LEFT: Citizenship Overview */}
             <section className="term-panel p-6 sm:p-8">
               <h2 className="term-header">CITIZENSHIP OVERVIEW</h2>
-
-              <span className="term-tag">NEOTERRA</span>
 
               <h3 className="term-title">APPLY FOR NEOTERRA CITIZENSHIP</h3>
 
@@ -235,38 +224,13 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
             </div>
           </div>
 
-          {/* CITIZENSHIP STATUS — only when connected */}
-          <section className="term-panel p-6 sm:p-8" style={{ marginBottom: 20 }}>
-            <h2 className="term-header">CITIZENSHIP STATUS</h2>
-            <table className="status-table">
-              <tbody>
-                <tr>
-                  <td style={{ width: '33%' }}><span className="status-label">Status</span></td>
-                  <td><span className="status-value status-value-green"><span className="status-dot-active"><span className="status-dot" />REGISTERED</span></span></td>
-                </tr>
-                <tr>
-                  <td><span className="status-label">Credentials Held</span></td>
-                  <td><span className="status-value">{totalNfts}</span></td>
-                </tr>
-                <tr>
-                  <td><span className="status-label">Standing Bonus</span></td>
-                  <td><span className="status-value">{multiplier.toFixed(1)}x</span></td>
-                </tr>
-                <tr>
-                  <td><span className="status-label">Accrual Rate</span></td>
-                  <td><span className="status-value">{pointsPerHour} CREDITS / HR</span></td>
-                </tr>
-                <tr>
-                  <td><span className="status-label">Total Credits</span></td>
-                  <td><span className="status-value">{totalPoints} CREDITS</span></td>
-                </tr>
-                <tr>
-                  <td><span className="status-label">Registration Period</span></td>
-                  <td><span className="status-value">{maxDuration > 0 ? `${maxDuration.toFixed(1)} days` : '—'}</span></td>
-                </tr>
-              </tbody>
-            </table>
-          </section>
+          {/* IDENTITY CARD — replaces old LIVE STATUS table */}
+          <IDCard
+            positions={positions}
+            stats={stats}
+            walletAddress={wallet.account?.address}
+            authToken={authToken}
+          />
 
           {/* Stats Cards */}
           <StatsCards stats={stats} />

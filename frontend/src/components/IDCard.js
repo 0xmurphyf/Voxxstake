@@ -1,0 +1,241 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import axios from 'axios';
+import { IdentificationBadge, CheckCircle, PencilSimple, Lightning } from '@phosphor-icons/react';
+
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
+const API = `${BACKEND_URL}/api`;
+const VOXX_PLACEHOLDER = 'https://images.pexels.com/photos/9203122/pexels-photo-9203122.jpeg?auto=compress&cs=tinysrgb&w=400';
+
+function formatDuration(days) {
+  if (days < 1) {
+    const hours = days * 24;
+    if (hours < 1) return `${(hours * 60).toFixed(0)}m`;
+    return `${hours.toFixed(1)}h`;
+  }
+  return `${days.toFixed(1)}d`;
+}
+
+export function IDCard({ positions, stats, walletAddress, authToken }) {
+  const activePositions = positions?.filter(p => p.status === 'active') || [];
+  const totalNfts = stats?.nft_count || activePositions.length || 0;
+  const totalCredits = (stats?.total_lore_points || 0).toFixed(0);
+  const multiplier = stats?.holding_multiplier || 1.0;
+  const creditsPerHour = (totalNfts * multiplier).toFixed(1);
+  const maxDuration = activePositions.reduce((max, p) => {
+    if ((p.duration_days || 0) > max) return p.duration_days;
+    return max;
+  }, 0) || 0;
+
+  // PFP state
+  const [pfpUrl, setPfpUrl] = useState(() => localStorage.getItem('neoterra_pfp') || null);
+  const [selectingPfp, setSelectingPfp] = useState(false);
+  const [pfpValid, setPfpValid] = useState(true);
+  const [checkingPfp, setCheckingPfp] = useState(false);
+
+  // Verify PFP is still held on-chain
+  const verifyPfp = useCallback(async (objectId) => {
+    if (!authToken || !objectId) return false;
+    try {
+      setCheckingPfp(true);
+      const r = await axios.get(`${API}/staking/nft/${objectId}`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      const pos = r.data?.position;
+      return pos?.status === 'active';
+    } catch {
+      return false;
+    } finally {
+      setCheckingPfp(false);
+    }
+  }, [authToken]);
+
+  // On mount, verify existing PFP
+  useEffect(() => {
+    const stored = localStorage.getItem('neoterra_pfp');
+    const storedId = localStorage.getItem('neoterra_pfp_id');
+    if (stored && storedId) {
+      verifyPfp(storedId).then(valid => {
+        if (!valid) {
+          // NFT no longer held — clear PFP
+          setPfpUrl(null);
+          setPfpValid(false);
+          localStorage.removeItem('neoterra_pfp');
+          localStorage.removeItem('neoterra_pfp_id');
+        } else {
+          setPfpValid(true);
+        }
+      });
+    }
+  }, [verifyPfp]);
+
+  const selectPfp = (position) => {
+    const imgUrl = position.image_url || VOXX_PLACEHOLDER;
+    setPfpUrl(imgUrl);
+    localStorage.setItem('neoterra_pfp', imgUrl);
+    localStorage.setItem('neoterra_pfp_id', position.object_id);
+    setPfpValid(true);
+    setSelectingPfp(false);
+  };
+
+  // Generate temp ID: NTR-XXXXXX from address
+  const tempId = walletAddress
+    ? `NTR-${walletAddress.slice(2, 8).toUpperCase()}`
+    : 'NTR-000000';
+
+  const registeredDate = activePositions.length > 0
+    ? new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+    : '—';
+
+  return (
+    <div className="term-panel p-5 sm:p-6 mb-5" data-testid="id-card">
+      <h2 className="term-header">TEMPORARY IDENTITY CARD</h2>
+
+      <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+        {/* PFP Section */}
+        <div style={{ flexShrink: 0 }}>
+          <div
+            style={{
+              width: 100, height: 100,
+              border: '2px solid rgba(0,255,204,0.4)',
+              background: 'rgba(0,15,20,0.8)',
+              overflow: 'hidden',
+              position: 'relative',
+              cursor: activePositions.length > 0 ? 'pointer' : 'default',
+            }}
+            onClick={() => activePositions.length > 0 && setSelectingPfp(!selectingPfp)}
+            title={activePositions.length > 0 ? 'Click to change PFP' : 'No credentials to use as PFP'}
+          >
+            {pfpUrl && pfpValid ? (
+              <img src={pfpUrl} alt="PFP" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : (
+              <div style={{
+                width: '100%', height: '100%',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'rgba(0,255,204,0.05)',
+              }}>
+                <IdentificationBadge size={40} weight="light" style={{ color: 'rgba(0,255,204,0.3)' }} />
+              </div>
+            )}
+            {activePositions.length > 0 && (
+              <div style={{
+                position: 'absolute', bottom: 0, right: 0,
+                background: 'rgba(0,10,15,0.9)', padding: '2px 6px',
+              }}>
+                <PencilSimple size={12} style={{ color: 'rgba(0,255,204,0.7)' }} />
+              </div>
+            )}
+            {checkingPfp && (
+              <div style={{
+                position: 'absolute', inset: 0,
+                background: 'rgba(0,10,15,0.7)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <div style={{ width: 20, height: 20, border: '2px solid rgba(0,255,204,0.3)', borderTopColor: '#00FFCC', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+              </div>
+            )}
+          </div>
+          <p className="mono text-xs mt-2 text-center" style={{ color: 'rgba(0,255,204,0.4)' }}>PFP</p>
+        </div>
+
+        {/* ID Details */}
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <IdentificationBadge size={20} weight="fill" style={{ color: '#00FFCC' }} />
+            <span className="mono text-sm" style={{ color: '#00FFCC', letterSpacing: '0.15em' }}>{tempId}</span>
+            {pfpValid && pfpUrl && (
+              <span className="status-badge badge-active" style={{ fontSize: '0.6rem' }}>
+                <CheckCircle size={10} weight="fill" />
+                VERIFIED
+              </span>
+            )}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 24px' }}>
+            <div>
+              <span className="hud-label" style={{ fontSize: '0.62rem' }}>STATUS</span>
+              <p className="mono text-xs" style={{ color: '#00FF88' }}>
+                <span className="status-dot" style={{ display: 'inline-block', marginRight: 6 }} />
+                REGISTERED
+              </p>
+            </div>
+            <div>
+              <span className="hud-label" style={{ fontSize: '0.62rem' }}>CREDENTIALS</span>
+              <p className="mono text-xs" style={{ color: '#fff' }}>{totalNfts}</p>
+            </div>
+            <div>
+              <span className="hud-label" style={{ fontSize: '0.62rem' }}>STANDING</span>
+              <p className="mono text-xs" style={{ color: '#00FFCC' }}>{multiplier.toFixed(1)}x</p>
+            </div>
+            <div>
+              <span className="hud-label" style={{ fontSize: '0.62rem' }}>ACCRUAL</span>
+              <p className="mono text-xs" style={{ color: '#fff' }}>{creditsPerHour} CR/HR</p>
+            </div>
+            <div>
+              <span className="hud-label" style={{ fontSize: '0.62rem' }}>CREDITS</span>
+              <p className="mono text-xs" style={{ color: '#00FF88', fontWeight: 600 }}>{totalCredits}</p>
+            </div>
+            <div>
+              <span className="hud-label" style={{ fontSize: '0.62rem' }}>REGISTERED</span>
+              <p className="mono text-xs" style={{ color: 'rgba(0,255,204,0.7)' }}>
+                {maxDuration > 0 ? formatDuration(maxDuration) : '—'}
+              </p>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid rgba(0,255,204,0.1)' }}>
+            <span className="hud-label" style={{ fontSize: '0.62rem' }}>WALLET</span>
+            <p className="mono text-xs" style={{ color: 'rgba(0,255,204,0.5)' }}>
+              {walletAddress ? `${walletAddress.slice(0, 14)}...${walletAddress.slice(-6)}` : '—'}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* PFP Selector */}
+      {selectingPfp && activePositions.length > 0 && (
+        <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid rgba(0,255,204,0.12)' }}>
+          <p className="hud-label mb-3" style={{ fontSize: '0.62rem' }}>SELECT PROFILE PICTURE</p>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {activePositions.slice(0, 12).map((pos) => {
+              const imgSrc = pos.image_url || VOXX_PLACEHOLDER;
+              const isSelected = pfpUrl === imgSrc;
+              return (
+                <div
+                  key={pos.object_id}
+                  onClick={() => selectPfp(pos)}
+                  style={{
+                    width: 56, height: 56,
+                    border: isSelected ? '2px solid #00FFCC' : '1px solid rgba(0,255,204,0.25)',
+                    cursor: 'pointer',
+                    overflow: 'hidden',
+                    background: 'rgba(0,15,20,0.8)',
+                    flexShrink: 0,
+                    transition: 'all 0.2s',
+                    boxShadow: isSelected ? '0 0 10px rgba(0,255,204,0.3)' : 'none',
+                  }}
+                  title={pos.name || `VOXX #${pos.object_id.slice(-6)}`}
+                >
+                  <img
+                    src={imgSrc}
+                    alt={pos.name}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    onError={(e) => { e.target.src = VOXX_PLACEHOLDER; }}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* PFP validity warning */}
+      {!pfpValid && pfpUrl && (
+        <div className="alert-banner mt-3" style={{ fontSize: '0.75rem', padding: '8px 12px' }}>
+          <strong>PFP INVALID:</strong> You no longer hold this NFT. Select a new one.
+        </div>
+      )}
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
