@@ -1,173 +1,310 @@
+/* ===== APP LAYOUT ===== */
 .App {
   min-height: 100vh;
+  padding: 24px 20px 48px;
 }
 
+@media (min-width: 768px) {
+  .App {
+    padding: 32px 32px 64px;
+  }
+}
+
+.app-container {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+/* Nav bar - minimal, terminal style */
 .nav-bar {
-  position: sticky;
-  top: 0;
-  z-index: 50;
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  background: rgba(8, 2, 15, 0.85);
-  border-bottom: 1px solid rgba(176, 38, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 16px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid rgba(0, 255, 204, 0.12);
 }
 
-.nav-bar::after {
-  content: "";
-  position: absolute;
-  bottom: -2px;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, #00FFE5 50%, transparent);
+.nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: inherit;
+  padding: 0;
 }
 
-/* NFT Card */
+.nav-logo-box {
+  width: 36px; height: 36px;
+  border: 1px solid rgba(0, 255, 204, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(0, 255, 204, 0.6);
+}
+
+.nav-text h3 {
+  font-family: 'Orbitron', sans-serif;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: #fff;
+  letter-spacing: 0.1em;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.nav-text p {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.15em;
+  color: rgba(0, 255, 204, 0.45);
+  margin: 2px 0 0;
+  text-transform: uppercase;
+}
+
+.nav-status {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  color: #00FF88;
+}
+
+/* Footer */
+.app-footer {
+  margin-top: 40px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(0, 255, 204, 0.1);
+  text-align: center;
+}
+
+.app-footer p {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.15em;
+  color: rgba(0, 255, 204, 0.35);
+  text-transform: uppercase;
+}
+
+/* ===== NFT CARD OVERRIDES for new theme ===== */
 .nft-card {
-  background: linear-gradient(135deg, rgba(18, 8, 33, 0.8), rgba(8, 2, 15, 0.9));
-  border: 1px solid rgba(176, 38, 255, 0.3);
-  transition: all 0.3s;
-  position: relative;
-  overflow: hidden;
-  clip-path: polygon(
-    16px 0%, 100% 0%, 100% calc(100% - 16px),
-    calc(100% - 16px) 100%, 0% 100%, 0% 16px
-  );
+  clip-path: none;
 }
-
-.nft-card::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, transparent 30%, rgba(0, 255, 229, 0.03) 50%, transparent 70%);
-  opacity: 0;
-  transition: opacity 0.3s;
-  pointer-events: none;
-}
-
-.nft-card:hover {
-  border-color: #00FFE5;
-  box-shadow: 0 0 40px rgba(0, 255, 229, 0.3);
-  transform: translateY(-4px);
-}
-
-.nft-card:hover::before {
-  opacity: 1;
-}
+.nft-card::before { display: none; }
 
 .nft-image-wrap {
-  position: relative;
-  background: linear-gradient(135deg, rgba(176, 38, 255, 0.2), rgba(0, 255, 229, 0.1));
-  overflow: hidden;
+  background: linear-gradient(135deg, rgba(0, 30, 35, 0.8), rgba(0, 15, 20, 0.9));
 }
-
 .nft-image-wrap::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, transparent 70%, rgba(8, 2, 15, 0.8));
+  background: linear-gradient(180deg, transparent 65%, rgba(0, 10, 13, 0.8));
   pointer-events: none;
 }
 
-/* Stats Card */
+/* Stats card overrides */
 .stats-card {
-  background: rgba(18, 8, 33, 0.7);
-  border: 1px solid rgba(176, 38, 255, 0.3);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: rgba(0, 15, 20, 0.7);
+  border: 1px solid rgba(0, 255, 204, 0.18);
+  backdrop-filter: blur(12px);
   position: relative;
   overflow: hidden;
 }
-
 .stats-card::before {
   content: "";
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 3px;
-  height: 100%;
-  background: linear-gradient(180deg, #B026FF, #00FFE5);
+  top: 0; left: 0;
+  width: 2px; height: 100%;
+  background: linear-gradient(180deg, #00FFCC, #00FF88);
 }
 
-.stats-card-cyan::before {
-  background: linear-gradient(180deg, #00FFE5, #B026FF);
-}
-
-/* Tab Navigation */
+/* Tab overrides for new theme */
 .cp-tab {
-  position: relative;
-  padding: 8px 16px;
-  font-family: 'Orbitron', sans-serif;
-  font-weight: 700;
-  font-size: 0.875rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: #8E78A8;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  color: rgba(0, 255, 204, 0.5);
   background: transparent;
   border: none;
   cursor: pointer;
   transition: all 0.2s;
+  padding: 10px 18px;
+  text-transform: uppercase;
 }
-
-.cp-tab:hover {
-  color: #E5D9F2;
-}
+.cp-tab:hover { color: rgba(0, 255, 204, 0.85); }
 
 .cp-tab-active {
-  color: #00FFE5;
-  text-shadow: 0 0 10px rgba(0, 255, 229, 0.5);
+  color: #00FFCC;
 }
-
 .cp-tab-active::after {
   content: "";
   position: absolute;
-  bottom: -8px;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, #B026FF, #00FFE5);
-  box-shadow: 0 0 8px rgba(0, 255, 229, 0.6);
+  bottom: 0; left: 20%; right: 20%;
+  height: 1px;
+  background: #00FFCC;
+  box-shadow: 0 0 6px rgba(0, 255, 204, 0.5);
 }
 
-/* HUD-style label */
+/* HUD label override */
 .hud-label {
   font-family: 'Share Tech Mono', monospace;
-  font-size: 0.7rem;
-  text-transform: uppercase;
+  font-size: 0.65rem;
   letter-spacing: 0.2em;
-  color: #00FFE5;
-  opacity: 0.7;
+  text-transform: uppercase;
+  color: rgba(0, 255, 204, 0.55);
 }
 
 .hud-value {
   font-family: 'Orbitron', sans-serif;
-  font-weight: 900;
+  font-weight: 700;
 }
 
-/* Corner brackets decoration */
-.cp-brackets {
+/* Panel overrides */
+.cp-panel {
+  background: rgba(0, 15, 20, 0.75);
+  border: 1px solid rgba(0, 255, 204, 0.2);
   position: relative;
 }
+.cp-panel::before { display: none; }
 
-.cp-brackets::before,
-.cp-brackets::after {
-  content: "";
-  position: absolute;
-  width: 16px;
-  height: 16px;
-  border: 2px solid #00FFE5;
+.cp-panel-cyan {
+  background: rgba(0, 15, 20, 0.75);
+  border: 1px solid rgba(0, 255, 204, 0.22);
 }
 
-.cp-brackets::before {
-  top: -2px;
-  left: -2px;
-  border-right: none;
-  border-bottom: none;
+.cp-corner-cuts {
+  clip-path: none;
 }
 
-.cp-brackets::after {
-  bottom: -2px;
-  right: -2px;
-  border-left: none;
-  border-top: none;
+/* Button overrides */
+.cp-btn {
+  background: transparent;
+  color: #00FFCC;
+  font-family: 'Share Tech Mono', monospace;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border: 1px solid rgba(0, 255, 204, 0.45);
+  transition: all 0.2s;
+  clip-path: none;
+  padding: 10px 22px;
+  font-size: 0.78rem;
+}
+
+.cp-btn:hover:not(:disabled) {
+  background: rgba(0, 255, 204, 0.08);
+  box-shadow: 0 0 15px rgba(0, 255, 204, 0.2);
+  transform: none;
+}
+
+.cp-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.cp-btn-cyan {
+  background: rgba(0, 255, 204, 0.1);
+  color: #00FFCC;
+  border-color: rgba(0, 255, 204, 0.4);
+}
+.cp-btn-cyan:hover:not(:disabled) {
+  background: rgba(0, 255, 204, 0.18);
+  box-shadow: 0 0 15px rgba(0, 255, 204, 0.25);
+}
+
+.cp-btn-ghost {
+  background: transparent;
+  border: 1px solid rgba(0, 255, 204, 0.3);
+  color: rgba(0, 255, 204, 0.8);
+}
+.cp-btn-ghost:hover {
+  background: rgba(0, 255, 204, 0.05);
+  border-color: #00FFCC;
+}
+
+/* Glow overrides */
+.cp-glow-purple {
+  box-shadow: 0 0 20px rgba(0, 255, 204, 0.1), inset 0 0 15px rgba(0, 255, 204, 0.03);
+}
+.cp-glow-cyan {
+  box-shadow: 0 0 20px rgba(0, 255, 204, 0.15), inset 0 0 15px rgba(0, 255, 204, 0.05);
+}
+
+/* Alert override */
+.cp-alert {
+  background: rgba(30, 5, 12, 0.6);
+  border-left: 3px solid #FF5577;
+  border-top: 1px solid rgba(255, 85, 119, 0.25);
+  border-right: 1px solid rgba(255, 85, 119, 0.25);
+  border-bottom: 1px solid rgba(255, 85, 119, 0.25);
+  color: #FF99AA;
+}
+
+/* Input override */
+.cp-input {
+  background: rgba(0, 10, 14, 0.9);
+  border: 1px solid rgba(0, 255, 204, 0.2);
+  color: #E5D9F2;
+  font-family: 'Share Tech Mono', monospace;
+  padding: 10px 14px;
+  outline: none;
+  transition: all 0.2s;
+}
+.cp-input:focus {
+  border-color: #00FFCC;
+  box-shadow: 0 0 10px rgba(0, 255, 204, 0.15);
+}
+.cp-input:disabled { opacity: 0.5; }
+
+/* Glitch text - recolor to cyan theme */
+.glitch {
+  position: relative;
+  color: #fff;
+  text-shadow:
+    0.04em 0 0 rgba(0, 255, 204, 0.6),
+    -0.02em -0.04em 0 rgba(0, 255, 136, 0.6),
+    0.02em 0.04em 0 rgba(0, 200, 180, 0.5);
+  animation: glitch-term 3s infinite;
+}
+
+@keyframes glitch-term {
+  0%, 100% {
+    text-shadow:
+      0.04em 0 0 rgba(0, 255, 204, 0.6),
+      -0.02em -0.04em 0 rgba(0, 255, 136, 0.6),
+      0.02em 0.04em 0 rgba(0, 200, 180, 0.5);
+  }
+  14% {
+    text-shadow:
+      0.04em 0 0 rgba(0, 255, 204, 0.6),
+      -0.02em -0.04em 0 rgba(0, 255, 136, 0.6),
+      0.02em 0.04em 0 rgba(0, 200, 180, 0.5);
+  }
+  15%, 49% {
+    text-shadow:
+      -0.04em -0.02em 0 rgba(0, 255, 204, 0.6),
+      0.02em 0.02em 0 rgba(0, 255, 136, 0.6),
+      -0.02em -0.04em 0 rgba(0, 200, 180, 0.5);
+  }
+  50%, 99% {
+    text-shadow:
+      0.02em 0.04em 0 rgba(0, 255, 204, 0.6),
+      0.04em 0 0 rgba(0, 255, 136, 0.6),
+      0 -0.04em 0 rgba(0, 200, 180, 0.5);
+  }
+}
+
+.flicker {
+  animation: flicker-term 4s infinite;
+}
+
+@keyframes flicker-term {
+  0%, 19.999%, 22%, 62.999%, 64%, 64.999%, 70%, 100% { opacity: 1; }
+  20%, 21.999%, 63%, 63.999%, 65%, 69.999% { opacity: 0.65; }
+}
+
+/* Divider */
+.cp-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0, 255, 204, 0.35), transparent);
+  margin: 20px 0;
 }

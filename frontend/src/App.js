@@ -10,167 +10,301 @@ import { NFTList } from './components/NFTList';
 import { StakingDashboard } from './components/StakingDashboard';
 import { AdminPanel } from './components/AdminPanel';
 import { NFTDetail } from './components/NFTDetail';
-import { Cube, Stack, Gear, Cpu } from '@phosphor-icons/react';
+import {
+  Cube, Stack, Gear, Cpu,
+  Wallet, ShieldCheck, Power, Database, Gift,
+  Warning, CaretDown
+} from '@phosphor-icons/react';
 
+/* ============================================================
+   LANDING PAGE — Terminal-style layout matching design reference
+   ============================================================ */
 function HomePage({ authToken, login, isAuthenticating, authError, logout, loadToken }) {
   const wallet = useWallet();
   const { positions, stats, sellAlerts, loading, syncing } = useStaking(authToken);
   const [activeTab, setActiveTab] = useState('nfts');
 
   useEffect(() => {
-    if (wallet.connected) {
-      loadToken();
-    } else {
-      logout();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wallet.connected]);
+    if (wallet.connected) loadToken();
+    else logout();
+  }, [wallet.connected]); // eslint-disable-line
+
+  /* ---- Derived data for status table ---- */
+  const activeCount = stats?.total_active || positions?.filter(p => p.status === 'active').length || 0;
+  const totalNfts = positions?.length || 0;
+  const totalPoints = (stats?.total_lore_points || 0).toFixed(0);
+  // Find max duration among active stakes for "staking duration"
+  const maxDuration = positions?.reduce((max, p) => {
+    if (p.status === 'active' && (p.duration_days || 0) > max) return p.duration_days;
+    return max;
+  }, 0) || 0;
 
   return (
-    <>
-      <WalletConnectPanel
-        onLoginSuccess={login}
-        isAuthenticating={isAuthenticating}
-        authToken={authToken}
-      />
+    <div className="app-container">
+      {/* ===== HEADER ===== */}
+      <header className="header-bar">
+        <div className="flex-1">
+          <p className="header-file-id">FILE_05_NFT_STAKING</p>
+          <div className="header-title-group">
+            <h1>NFT SOFT STAKING</h1>
+            <p className="header-subtitle">
+              Stake your Genesis NFT. Keep it in your wallet. Earn continuously.
+            </p>
+          </div>
+        </div>
+        {/* V Logo */}
+        <div className="header-logo">
+          <Cpu size={32} weight="bold" />
+        </div>
+      </header>
 
+      {/* Auth Error */}
       {authError && (
-        <div className="cp-alert cp-corner-cuts p-4 mb-6" data-testid="auth-error">
-          <p className="hud-label mb-1">AUTH ERROR</p>
-          <p className="text-sm">{authError}</p>
+        <div className="alert-banner mb-5" data-testid="auth-error">
+          <strong>AUTH ERROR:</strong> {authError}
         </div>
       )}
 
+      {/* ===== MAIN GRID: Left + Right ===== */}
       {!authToken ? (
-        <div className="cp-panel cp-corner-cuts p-8 sm:p-12 text-center" data-testid="connect-prompt">
-          <div className="max-w-2xl mx-auto">
-            <p className="hud-label mb-3 flicker">// SYSTEM AWAITING NEURAL HANDSHAKE</p>
-            <h2 className="text-3xl sm:text-5xl hud-value glitch mb-4" data-text="GVOXX LORE STAKE">
-              GVOXX LORE STAKE
-            </h2>
-            <p className="text-base text-[#8E78A8] mb-8 max-w-lg mx-auto">
-              Hold VOXX NFTs to auto-stake and accumulate Lore Points. No claims, no gas, no transactions —
-              your NFTs stay in your wallet at all times.
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-3xl mx-auto">
-              {[
-                { title: 'AUTO-STAKE', desc: 'Hold to earn — zero actions required', color: 'text-[#B026FF]' },
-                { title: 'TIER REWARDS', desc: '4 tiers • Up to 3× multiplier', color: 'text-[#00FFE5]' },
-                { title: 'SELL DETECTION', desc: 'Sell-aware — points preserved', color: 'text-[#FF5577]' },
-              ].map((f, i) => (
-                <div key={i} className="cp-panel-cyan cp-corner-cuts p-4 text-left">
-                  <p className={`hud-value text-xs mb-2 ${f.color}`}>{f.title}</p>
-                  <p className="text-xs text-[#8E78A8]">{f.desc}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      ) : (
+        /* ---- Unauthenticated: Show landing page with connect ---- */
         <>
-          {/* Tab Navigation */}
-          <div className="flex gap-1 sm:gap-2 mb-6 border-b border-[#B026FF]/20 overflow-x-auto" data-testid="tab-navigation">
-            <button
-              onClick={() => setActiveTab('nfts')}
-              className={`cp-tab ${activeTab === 'nfts' ? 'cp-tab-active' : ''}`}
-              data-testid="tab-nfts"
-            >
-              <Cube size={14} weight="bold" className="inline mr-2" />
-              MY NFTS
-            </button>
-            <button
-              onClick={() => setActiveTab('dashboard')}
-              className={`cp-tab ${activeTab === 'dashboard' ? 'cp-tab-active' : ''}`}
-              data-testid="tab-dashboard"
-            >
-              <Stack size={14} weight="bold" className="inline mr-2" />
-              DASHBOARD
-            </button>
-            <button
-              onClick={() => setActiveTab('admin')}
-              className={`cp-tab ${activeTab === 'admin' ? 'cp-tab-active' : ''}`}
-              data-testid="tab-admin"
-            >
-              <Gear size={14} weight="bold" className="inline mr-2" />
-              ADMIN
-            </button>
+          <div className="main-grid" style={{ marginBottom: 20 }}>
+            {/* LEFT: Protocol Overview */}
+            <section className="term-panel p-6 sm:p-8">
+              <h2 className="term-header">01_PROTOCOL OVERVIEW</h2>
+
+              <span className="term-tag">PROTOCOL</span>
+
+              <h3 className="term-title">VOXX PASSIVE YIELD ENGINE</h3>
+
+              <div className="term-text space-y-4">
+                <p>VOXX Soft Staking allows <strong>Genesis NFT</strong> holders to earn daily rewards without transferring custody.</p>
+                <p><strong>NFTs remain safely inside your wallet</strong> while reward eligibility is tracked on-chain through staking snapshots.</p>
+              </div>
+
+              {/* Connect wallet inline */}
+              <div className="wallet-inline">
+                <WalletConnectPanel
+                  onLoginSuccess={login}
+                  isAuthenticating={isAuthenticating}
+                  authToken={authToken}
+                />
+              </div>
+            </section>
+
+            {/* RIGHT: Staking Flow */}
+            <section className="term-panel p-6 sm:p-8">
+              <h2 className="term-header">03_STAKING FLOW</h2>
+
+              <div className="flow-step">
+                <div className="flow-line">
+                  <div className="flow-dot" />
+                  <div className="flow-connector" />
+                </div>
+                <div className="flow-icon"><Wallet size={22} weight="light" /></div>
+                <div className="flow-content">
+                  <div className="flow-title">Connect Wallet</div>
+                  <div className="flow-desc">Connect your wallet to VOXX Terminal.</div>
+                </div>
+              </div>
+
+              <div className="flow-step">
+                <div className="flow-line">
+                  <div className="flow-dot" />
+                  <div className="flow-connector" />
+                </div>
+                <div className="flow-icon"><ShieldCheck size={22} /></div>
+                <div className="flow-content">
+                  <div className="flow-title">Verify NFT</div>
+                  <div className="flow-desc">System verifies your Genesis NFT ownership.</div>
+                </div>
+              </div>
+
+              <div className="flow-step">
+                <div className="flow-line">
+                  <div className="flow-dot" />
+                  <div className="flow-connector" />
+                </div>
+                <div className="flow-icon"><Power size={22} weight="fill" /></div>
+                <div className="flow-content">
+                  <div className="flow-title">Activate Staking</div>
+                  <div className="flow-desc">Activate soft staking. No NFT transfer needed.</div>
+                </div>
+              </div>
+
+              <div className="flow-step">
+                <div className="flow-line">
+                  <div className="flow-dot" />
+                  <div className="flow-connector" />
+                </div>
+                <div className="flow-icon"><Wallet size={22} weight="duotone" /></div>
+                <div className="flow-content">
+                  <div className="flow-title">NFT Remains In Wallet</div>
+                  <div className="flow-desc">Your NFT stays safely in your wallet.</div>
+                </div>
+              </div>
+
+              <div className="flow-step">
+                <div className="flow-line">
+                  <div className="flow-dot" />
+                  <div className="flow-connector" />
+                </div>
+                <div className="flow-icon"><Database size={22} /></div>
+                <div className="flow-content">
+                  <div className="flow-title">Accrue Daily Rewards</div>
+                  <div className="flow-desc">Rewards accrue automatically every day.</div>
+                </div>
+              </div>
+
+              <div className="flow-step">
+                <div className="flow-line">
+                  <div className="flow-dot" />
+                </div>
+                <div className="flow-icon"><Gift size={22} weight="fill" /></div>
+                <div className="flow-content">
+                  <div className="flow-title">Claim Anytime</div>
+                  <div className="flow-desc">Claim rewards anytime you choose.</div>
+                </div>
+              </div>
+            </section>
           </div>
 
-          {/* Stats always visible */}
+          {/* MIDDLE: Live Status (placeholder when not connected) */}
+          <section className="term-panel p-6 sm:p-8" style={{ marginBottom: 20 }}>
+            <h2 className="term-header">02_LIVE STAKING STATUS</h2>
+
+            <table className="status-table">
+              <tbody>
+                <tr>
+                  <td style={{ width: '33%' }}><span className="status-label">Status</span></td>
+                  <td><span className="status-value status-value-green"><span className="status-dot-active"><span className="status-dot" />ACTIVE</span></span></td>
+                </tr>
+                <tr>
+                  <td><span className="status-label">Genesis NFTs</span></td>
+                  <td><span className="status-value text-dim">—</span></td>
+                </tr>
+                <tr>
+                  <td><span className="status-label">Staking Duration</span></td>
+                  <td><span className="status-value text-dim">—</span></td>
+                </tr>
+                <tr>
+                  <td><span className="status-label">Reward Rate</span></td>
+                  <td><span className="status-value text-dim">10 VOXX / DAY</span></td>
+                </tr>
+                <tr>
+                  <td><span className="status-label">Pending Rewards</span></td>
+                  <td><span className="status-value text-dim">— VOXX</span></td>
+                </tr>
+                <tr>
+                  <td><span className="status-label">Claimable</span></td>
+                  <td><span className="status-value text-dim">—</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+
+          {/* BOTTOM: Important Notes */}
+          <section className="notice-box p-6 sm:p-8">
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="notice-icon-wrap">
+                <Warning size={36} weight="fill" className="notice-icon" />
+                <span className="notice-label">NOTICE</span>
+              </div>
+              <ul className="notice-list">
+                <li>NFT stays in your wallet</li>
+                <li>Rewards update automatically</li>
+                <li>Selling NFT immediately stops future rewards</li>
+                <li>No custody transfer required</li>
+                <li>Previously earned rewards remain claimable</li>
+              </ul>
+            </div>
+          </section>
+        </>
+      ) : (
+        /* ---- Authenticated: Show staking data with terminal theme ---- */
+        <>
+          {/* Mini header showing connected state */}
+          <div className="term-panel p-4 mb-5" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+            <div className="flex items-center gap-3">
+              <WalletConnectPanel
+                onLoginSuccess={login}
+                isAuthenticating={isAuthenticating}
+                authToken={authToken}
+              />
+            </div>
+            <div className="mono text-xs" style={{ color: '#00FF88' }}>
+              {syncing ? <>SYNCING<span className="ml-1" style={{ animation: 'pulse-dot 1s infinite', display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#00FF88', verticalAlign: 'middle' }} /> </> : 'LIVE'} &nbsp;|&nbsp; SUI MAINNET
+            </div>
+          </div>
+
+          {/* Stats Cards */}
           <StatsCards stats={stats} />
 
-          {syncing && (
-            <div className="mono text-xs text-[#00FFE5] mb-3 flex items-center gap-2 flicker" data-testid="sync-indicator">
-              <div className="w-2 h-2 bg-[#00FFE5] rounded-full animate-pulse" />
-              SYNCING ON-CHAIN STATE...
-            </div>
-          )}
+          {/* Tab Navigation */}
+          <div className="tab-nav" data-testid="tab-navigation">
+            <button onClick={() => setActiveTab('nfts')} className={`tab-btn ${activeTab === 'nfts' ? 'active' : ''}`} data-testid="tab-nfts">
+              <Cube size={12} weight="bold" className="inline mr-2" />MY NFTS
+            </button>
+            <button onClick={() => setActiveTab('dashboard')} className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`} data-testid="tab-dashboard">
+              <Stack size={12} weight="bold" className="inline mr-2" />DASHBOARD
+            </button>
+            <button onClick={() => setActiveTab('admin')} className={`tab-btn ${activeTab === 'admin' ? 'active' : ''}`} data-testid="tab-admin">
+              <Gear size={12} weight="bold" className="inline mr-2" />ADMIN
+            </button>
+          </div>
 
+          {/* Tab Content */}
           {activeTab === 'nfts' && (
-            <div data-testid="nfts-tab-content">
-              <div className="mb-4">
-                <p className="hud-label">// WALLET SCAN</p>
-                <h2 className="text-2xl sm:text-3xl hud-value">YOUR VOXX NFTS</h2>
-              </div>
+            <div data-testid="nfts-tab-content" className="mt-6">
               <NFTList positions={positions} loading={loading} />
             </div>
           )}
 
           {activeTab === 'dashboard' && (
-            <div data-testid="dashboard-tab-content">
-              <div className="mb-4">
-                <p className="hud-label">// STAKING OVERVIEW</p>
-                <h2 className="text-2xl sm:text-3xl hud-value">LORE TRACKER</h2>
-              </div>
+            <div data-testid="dashboard-tab-content" className="mt-6">
               <StakingDashboard positions={positions} sellAlerts={sellAlerts} />
             </div>
           )}
 
           {activeTab === 'admin' && (
-            <div data-testid="admin-tab-content">
+            <div data-testid="admin-tab-content" className="mt-6">
               <AdminPanel authToken={authToken} />
             </div>
           )}
         </>
       )}
-    </>
+    </div>
   );
 }
 
+/* ============================================================
+   ROOT APP COMPONENT
+   ============================================================ */
 function App() {
   const wallet = useWallet();
   const { authToken, login, logout, isAuthenticating, authError, loadToken } = useWalletAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
-  const isDetailPage = location.pathname.startsWith('/nft/');
-
   return (
-    <div className="App min-h-screen">
-      {/* Navigation Bar */}
-      <nav className="nav-bar px-4 sm:px-6 py-4" data-testid="navigation-bar">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
-          <button
-            onClick={() => navigate('/')}
-            className="flex items-center gap-3 hover:opacity-80 transition-opacity"
-            data-testid="logo-home-button"
-          >
-            <div className="w-10 h-10 cp-corner-cuts bg-gradient-to-br from-[#B026FF] to-[#00FFE5] flex items-center justify-center">
-              <Cpu size={22} weight="bold" className="text-white" />
-            </div>
-            <div className="text-left hidden sm:block">
-              <p className="hud-value text-base text-white tracking-wider">GVOXX</p>
-              <p className="hud-label text-[10px]">// LORE STAKE</p>
-            </div>
-          </button>
-          <div className="mono text-xs text-[#00FFE5] hidden md:block flicker">
-            [ SUI MAINNET • ONLINE ]
+    <div className="App">
+      {/* Minimal Nav Bar */}
+      <nav className="nav-bar app-container" data-testid="navigation-bar">
+        <button onClick={() => navigate('/')} className="nav-brand" data-testid="logo-home-button">
+          <div className="nav-logo-box">
+            <Cpu size={18} weight="bold" />
           </div>
-        </div>
+          <div className="nav-text">
+            <h3>VOXXSTAKE</h3>
+            <p>// SOFT-STAKE PROTOCOL</p>
+          </div>
+        </button>
+        <span className="nav-status hidden md:block flicker">[ ONLINE ]</span>
       </nav>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 relative z-10">
+      <main>
         <Routes>
           <Route path="/" element={
             <HomePage
@@ -184,14 +318,18 @@ function App() {
           } />
           <Route path="/nft/:objectId" element={
             authToken ? (
-              <NFTDetail authToken={authToken} />
+              <div className="app-container mt-4">
+                <NFTDetail authToken={authToken} />
+              </div>
             ) : (
-              <div className="cp-panel cp-corner-cuts p-8 text-center">
-                <p className="hud-label mb-2">ACCESS DENIED</p>
-                <p className="text-sm text-[#8E78A8] mb-4">Sign in to view NFT details.</p>
-                <button onClick={() => navigate('/')} className="cp-btn px-4 py-2 text-xs">
-                  RETURN TO HOME
-                </button>
+              <div className="app-container mt-4">
+                <div className="term-panel p-10 text-center">
+                  <p className="hud-label mb-2">ACCESS DENIED</p>
+                  <p className="text-sm text-dim mb-4">Sign in to view NFT details.</p>
+                  <button onClick={() => navigate('/')} className="btn-primary px-4 py-2">
+                    RETURN TO HOME
+                  </button>
+                </div>
               </div>
             )
           } />
@@ -199,12 +337,8 @@ function App() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-[#B026FF]/20 mt-12 py-6 relative z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 text-center">
-          <p className="mono text-xs text-[#8E78A8]">
-            // VOXX INC. // SOFT-STAKE PROTOCOL v1.0 // POWERED BY SUI //
-          </p>
-        </div>
+      <footer className="app-footer app-container">
+        <p>// VOXX INC. // SOFT-STAKE PROTOCOL v1.0 // POWERED BY SUI //</p>
       </footer>
     </div>
   );
