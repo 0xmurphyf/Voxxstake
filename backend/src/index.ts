@@ -7,6 +7,7 @@ import { connectDB } from './db';
 import authRouter from './routes/auth';
 import stakingRouter from './routes/staking';
 import adminRouter from './routes/admin';
+import { startBackgroundSync } from './services/backgroundSync';
 
 async function main() {
   await connectDB();
@@ -54,7 +55,6 @@ async function main() {
   app.use('/api', apiRouter);
 
   // Serve frontend static files
-  // Railway: /app/frontend/build, local: ../../frontend/build
   const frontendBuild = path.resolve(__dirname, '../../frontend/build');
   console.log(`Frontend path: ${frontendBuild}`);
   console.log(`Frontend exists: ${fs.existsSync(frontendBuild)}`);
@@ -77,6 +77,9 @@ async function main() {
   app.listen(config.port, () => {
     console.log(`Voxxstake server listening on port ${config.port}`);
   });
+
+  // Start background sync (every 10 minutes by default)
+  startBackgroundSync();
 }
 
 main().catch(console.error);

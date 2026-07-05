@@ -201,14 +201,26 @@ async function getKioskOwnedObjects(
 
         if (!dfResult.data) break;
 
-        // 3. For each dynamic field, get the object and check if it's a VOXX NFT
+        // 3. Separate DynamicObject (NFTs) from DynamicField (Lock, Listing, etc.)
+        //    Also track which NFTs have a Listing field (listed for sale → exclude).
         const itemIds: string[] = [];
+        const listedNftIds = new Set<string>();
+
         for (const field of dfResult.data) {
-          // Only DynamicObject fields point to actual NFT objects.
-          // DynamicField (e.g. Lock, Listing) are kiosk internals.
           if (field.type === 'DynamicObject') {
             const objectId = field.objectId as string;
             if (objectId) itemIds.push(objectId);
+          } else if (field.type === 'DynamicField') {
+            // Check if this is a Kiosk Listing field.
+            // Listing fields have name.type = "0x2::kiosk::Listing"
+            // and name.value.id = the listed NFT's object ID.
+            const name = (field as Record<string, unknown>).name as Record<string, unknown> | undefined;
+            const nameType = name?.type as string | undefined;
+            if (nameType && nameType.includes('kiosk::Listing')) {
+              const nameValue = name?.value as Record<string, unknown> | undefined;
+              const listedId = nameValue?.id as string | undefined;
+              if (listedId) listedNftIds.add(listedId);
+            }
           }
         }
 
@@ -223,9 +235,12 @@ async function getKioskOwnedObjects(
             const data = obj.data as Record<string, unknown>;
             if (!data) continue;
 
-            // Check if this is the target NFT type
+            // Check if this is the target NFT type AND not listed for sale
             if (data.type === typeFilter) {
-              allObjects.push({ data });
+              const objId = data.objectId as string;
+              if (objId && !listedNftIds.has(objId)) {
+                allObjects.push({ data });
+              }
             }
           }
         }
