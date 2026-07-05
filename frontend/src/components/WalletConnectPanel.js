@@ -1,9 +1,14 @@
 import React from 'react';
 import { ConnectButton, useWallet } from '@suiet/wallet-kit';
-import { Wallet, Power, Lightning } from '@phosphor-icons/react';
+import { Wallet, Power, Lightning, SignOut } from '@phosphor-icons/react';
 
-export function WalletConnectPanel({ onLoginSuccess, isAuthenticating, authToken }) {
+export function WalletConnectPanel({ onLoginSuccess, onLogout, isAuthenticating, authToken }) {
   const wallet = useWallet();
+
+  const handleDisconnect = () => {
+    if (onLogout) onLogout();
+    wallet.disconnect();
+  };
 
   return (
     <div className="cp-panel cp-corner-cuts p-5 sm:p-6 mb-8 cp-glow-purple" data-testid="wallet-connect-panel">
@@ -54,13 +59,25 @@ export function WalletConnectPanel({ onLoginSuccess, isAuthenticating, authToken
                   )}
                 </button>
               )}
-              <button
-                onClick={() => wallet.disconnect()}
-                className="cp-btn-ghost px-3 sm:px-4 py-3 text-xs sm:text-sm flex items-center gap-2"
-                data-testid="disconnect-button"
-              >
-                <Power size={16} weight="bold" />
-              </button>
+              {authToken && (
+                <button
+                  onClick={handleDisconnect}
+                  className="cp-btn-ghost px-3 sm:px-4 py-3 text-xs sm:text-sm flex items-center gap-2"
+                  data-testid="logout-button"
+                >
+                  <SignOut size={16} weight="bold" />
+                  LOGOUT
+                </button>
+              )}
+              {!authToken && (
+                <button
+                  onClick={() => wallet.disconnect()}
+                  className="cp-btn-ghost px-3 sm:px-4 py-3 text-xs sm:text-sm flex items-center gap-2"
+                  data-testid="disconnect-button"
+                >
+                  <Power size={16} weight="bold" />
+                </button>
+              )}
             </>
           ) : (
             <div data-testid="connect-wallet-button">

@@ -1,11 +1,3 @@
-// ─── Tier ───
-export interface Tier {
-  name: string;
-  multiplier: number;
-  min_days: number;
-  apy: number;
-}
-
 // ─── StakingPosition ───
 export interface StakingPosition {
   object_id: string;
@@ -17,7 +9,8 @@ export interface StakingPosition {
   status: 'active' | 'paused';
   lore_points: number;
   duration_days: number;
-  tier: string;
+  /** Holding multiplier (1.0 base, +0.1 per 10 NFTs held) */
+  holding_multiplier: number;
   is_owned: boolean;
 }
 
@@ -26,6 +19,10 @@ export interface StakingStats {
   total_active: number;
   total_paused: number;
   total_lore_points: number;
+  /** Number of NFTs currently held (owned) */
+  nft_count: number;
+  /** Current holding multiplier */
+  holding_multiplier: number;
   positions: StakingPosition[];
   sell_alerts: string[];
 }
@@ -66,8 +63,7 @@ export interface NFTDetailResponse {
     status: string;
     lore_points: number;
     duration_days: number;
-    tier: string;
-    tier_multiplier: number;
+    holding_multiplier: number;
     created_at: string | null;
     current_session_start: string | null;
   } | null;
@@ -77,7 +73,18 @@ export interface NFTDetailResponse {
 export const VOXX_TYPE =
   '0xdca282f30ff2acc0083c5c90969ae97c59a638a6a50ab9112f7ea17507cdd2b7::voxx__inc_::Nft';
 
-export const BASE_POINTS_PER_DAY = 10.0;
+/** Points per NFT per hour */
+export const POINTS_PER_NFT_PER_HOUR = 1.0;
+
+/** Points per NFT per day = 24 */
+export const POINTS_PER_NFT_PER_DAY = POINTS_PER_NFT_PER_HOUR * 24;
+
+/** Number of NFTs per 0.1x multiplier step */
+export const HOLDING_MULTIPLIER_STEP = 10;
+
+/** Max bonus per step */
+export const HOLDING_MULTIPLIER_BONUS = 0.1;
+
 export const NONCE_EXPIRY_SECONDS = 300;
 export const JWT_EXPIRY_HOURS = 24;
 export const JWT_ALGORITHM = 'HS256';

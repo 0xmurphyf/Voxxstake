@@ -1,7 +1,11 @@
 import React from 'react';
-import { Cube, Lightning, Clock, Trophy, Pause } from '@phosphor-icons/react';
+import { Cube, Lightning, Trophy, Clock } from '@phosphor-icons/react';
 
 export function StatsCards({ stats }) {
+  const nftCount = stats?.nft_count || 0;
+  const multiplier = stats?.holding_multiplier || 1.0;
+  const pointsPerHour = (nftCount * multiplier).toFixed(1);
+
   const cards = [
     {
       title: 'Active Stakes',
@@ -12,21 +16,21 @@ export function StatsCards({ stats }) {
     },
     {
       title: 'Lore Points',
-      value: (stats?.total_lore_points || 0).toFixed(2),
+      value: (stats?.total_lore_points || 0).toFixed(0),
       icon: Trophy,
       accent: 'purple',
       testId: 'stat-lore-points',
     },
     {
-      title: 'Paused',
-      value: stats?.total_paused || 0,
-      icon: Pause,
+      title: 'NFTs Held',
+      value: nftCount,
+      icon: Cube,
       accent: 'cyan',
-      testId: 'stat-paused',
+      testId: 'stat-nft-count',
     },
     {
-      title: 'Base Rate',
-      value: '10/d',
+      title: `Rate (${multiplier.toFixed(1)}x)`,
+      value: `${pointsPerHour}/h`,
       icon: Clock,
       accent: 'purple',
       testId: 'stat-rate',

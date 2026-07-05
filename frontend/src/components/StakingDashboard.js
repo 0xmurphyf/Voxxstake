@@ -11,10 +11,6 @@ function formatDuration(days) {
   return `${days.toFixed(2)} days`;
 }
 
-function getTierClass(tier) {
-  return `tier-${(tier || 'bronze').toLowerCase()}`;
-}
-
 export function StakingDashboard({ positions, sellAlerts }) {
   const navigate = useNavigate();
   const activePositions = positions.filter((p) => p.status === 'active');
@@ -59,45 +55,48 @@ export function StakingDashboard({ positions, sellAlerts }) {
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {activePositions.map((position) => (
-              <div
-                key={position.object_id}
-                className="cp-panel cp-corner-cuts cp-glow-purple p-5 cursor-pointer hover:cp-glow-cyan transition-all"
-                onClick={() => navigate(`/nft/${position.object_id}`)}
-                data-testid={`active-stake-${position.object_id}`}
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex-1 min-w-0">
-                    <h3 className="hud-value text-base sm:text-lg truncate" data-testid={`active-name-${position.object_id}`}>
-                      {position.name || `VOXX #${position.object_id.slice(-6)}`}
-                    </h3>
-                    <p className="mono text-xs text-[#8E78A8] truncate">
-                      {position.object_id.slice(0, 14)}...{position.object_id.slice(-6)}
-                    </p>
+            {activePositions.map((position) => {
+              const mult = position.holding_multiplier || 1.0;
+              return (
+                <div
+                  key={position.object_id}
+                  className="cp-panel cp-corner-cuts cp-glow-purple p-5 cursor-pointer hover:cp-glow-cyan transition-all"
+                  onClick={() => navigate(`/nft/${position.object_id}`)}
+                  data-testid={`active-stake-${position.object_id}`}
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="hud-value text-base sm:text-lg truncate" data-testid={`active-name-${position.object_id}`}>
+                        {position.name || `VOXX #${position.object_id.slice(-6)}`}
+                      </h3>
+                      <p className="mono text-xs text-[#8E78A8] truncate">
+                        {position.object_id.slice(0, 14)}...{position.object_id.slice(-6)}
+                      </p>
+                    </div>
+                    <span className="status-badge badge-active">{mult.toFixed(1)}x</span>
                   </div>
-                  <span className={`status-badge ${getTierClass(position.tier)}`}>{position.tier}</span>
-                </div>
 
-                <div className="grid grid-cols-2 gap-3 pt-3 border-t border-[#B026FF]/20">
-                  <div>
-                    <div className="flex items-center gap-1 mb-1">
-                      <Clock size={12} className="text-[#8E78A8]" />
-                      <p className="hud-label">Duration</p>
+                  <div className="grid grid-cols-2 gap-3 pt-3 border-t border-[#B026FF]/20">
+                    <div>
+                      <div className="flex items-center gap-1 mb-1">
+                        <Clock size={12} className="text-[#8E78A8]" />
+                        <p className="hud-label">Duration</p>
+                      </div>
+                      <p className="hud-value text-white">{formatDuration(position.duration_days)}</p>
                     </div>
-                    <p className="hud-value text-white">{formatDuration(position.duration_days)}</p>
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-1 mb-1">
-                      <Trophy size={12} className="text-[#00FFE5]" />
-                      <p className="hud-label">Lore Points</p>
+                    <div>
+                      <div className="flex items-center gap-1 mb-1">
+                        <Trophy size={12} className="text-[#00FFE5]" />
+                        <p className="hud-label">Lore Points</p>
+                      </div>
+                      <p className="hud-value text-[#00FFE5]" data-testid={`active-points-${position.object_id}`}>
+                        {position.lore_points.toFixed(0)}
+                      </p>
                     </div>
-                    <p className="hud-value text-[#00FFE5]" data-testid={`active-points-${position.object_id}`}>
-                      {position.lore_points.toFixed(2)}
-                    </p>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
@@ -131,7 +130,7 @@ export function StakingDashboard({ positions, sellAlerts }) {
                 </div>
                 <div className="text-right ml-3">
                   <p className="hud-value text-[#00FFE5] text-lg" data-testid={`paused-points-${position.object_id}`}>
-                    {position.lore_points.toFixed(2)}
+                    {position.lore_points.toFixed(0)}
                   </p>
                   <p className="hud-label">PTS</p>
                 </div>

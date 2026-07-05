@@ -14,10 +14,6 @@ function formatDuration(days) {
   return `${days.toFixed(3)} days`;
 }
 
-function getTierClass(tier) {
-  return `tier-${(tier || 'bronze').toLowerCase()}`;
-}
-
 export function NFTDetail({ authToken }) {
   const { objectId } = useParams();
   const navigate = useNavigate();
@@ -56,6 +52,7 @@ export function NFTDetail({ authToken }) {
   const { metadata, position } = detail;
   const isActive = position?.status === 'active';
   const imgSrc = metadata.image_url || VOXX_PLACEHOLDER;
+  const mult = position?.holding_multiplier || 1.0;
 
   const attributes = metadata.attributes || {};
   const attrEntries = Object.entries(attributes).filter(([_, v]) => v !== null && v !== undefined && v !== '');
@@ -111,8 +108,8 @@ export function NFTDetail({ authToken }) {
                     </span>
                   )}
                 </span>
-                <span className={`status-badge ${getTierClass(position.tier)}`} data-testid="nft-detail-tier">
-                  {position.tier} × {position.tier_multiplier}
+                <span className="status-badge badge-active" data-testid="nft-detail-multiplier">
+                  {mult.toFixed(1)}x MULTIPLIER
                 </span>
               </div>
 
@@ -132,7 +129,7 @@ export function NFTDetail({ authToken }) {
                     <p className="hud-label">Lore Points</p>
                   </div>
                   <p className="hud-value text-[#00FFE5] text-lg" data-testid="nft-detail-points">
-                    {position.lore_points.toFixed(3)}
+                    {position.lore_points.toFixed(0)}
                   </p>
                 </div>
               </div>

@@ -26,13 +26,16 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
 
   useEffect(() => {
     if (wallet.connected) loadToken();
-    else logout();
+    // IMPORTANT: do NOT call logout() when wallet disconnects.
+    // The token persists across page closes — only explicit logout clears it.
   }, [wallet.connected]); // eslint-disable-line
 
   /* ---- Derived data for status table ---- */
   const activeCount = stats?.total_active || positions?.filter(p => p.status === 'active').length || 0;
-  const totalNfts = positions?.length || 0;
+  const totalNfts = stats?.nft_count || positions?.filter(p => p.status === 'active').length || 0;
   const totalPoints = (stats?.total_lore_points || 0).toFixed(0);
+  const multiplier = stats?.holding_multiplier || 1.0;
+  const pointsPerHour = (totalNfts * multiplier).toFixed(1);
   // Find max duration among active stakes for "staking duration"
   const maxDuration = positions?.reduce((max, p) => {
     if (p.status === 'active' && (p.duration_days || 0) > max) return p.duration_days;
@@ -72,7 +75,7 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
           <div className="main-grid" style={{ marginBottom: 20 }}>
             {/* LEFT: Protocol Overview */}
             <section className="term-panel p-6 sm:p-8">
-              <h2 className="term-header">01_PROTOCOL OVERVIEW</h2>
+              <h2 className="term-header">PROTOCOL OVERVIEW</h2>
 
               <span className="term-tag">PROTOCOL</span>
 
@@ -87,6 +90,7 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
               <div className="wallet-inline">
                 <WalletConnectPanel
                   onLoginSuccess={login}
+                  onLogout={logout}
                   isAuthenticating={isAuthenticating}
                   authToken={authToken}
                 />
@@ -95,7 +99,7 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
 
             {/* RIGHT: Staking Flow */}
             <section className="term-panel p-6 sm:p-8">
-              <h2 className="term-header">03_STAKING FLOW</h2>
+              <h2 className="term-header">STAKING FLOW</h2>
 
               <div className="flow-step">
                 <div className="flow-line">
@@ -172,7 +176,7 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
 
           {/* MIDDLE: Live Status (placeholder when not connected) */}
           <section className="term-panel p-6 sm:p-8" style={{ marginBottom: 20 }}>
-            <h2 className="term-header">02_LIVE STAKING STATUS</h2>
+            <h2 className="term-header">LIVE STAKING STATUS</h2>
 
             <table className="status-table">
               <tbody>
@@ -181,24 +185,24 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
                   <td><span className="status-value status-value-green"><span className="status-dot-active"><span className="status-dot" />ACTIVE</span></span></td>
                 </tr>
                 <tr>
-                  <td><span className="status-label">Genesis NFTs</span></td>
-                  <td><span className="status-value text-dim">—</span></td>
+                  <td><span className="status-label">NFTs Held</span></td>
+                  <td><span className="status-value text-dim">{totalNfts || '—'}</span></td>
                 </tr>
                 <tr>
-                  <td><span className="status-label">Staking Duration</span></td>
-                  <td><span className="status-value text-dim">—</span></td>
+                  <td><span className="status-label">Multiplier</span></td>
+                  <td><span className="status-value text-dim">{multiplier.toFixed(1)}x</span></td>
                 </tr>
                 <tr>
                   <td><span className="status-label">Reward Rate</span></td>
-                  <td><span className="status-value text-dim">10 VOXX / DAY</span></td>
+                  <td><span className="status-value text-dim">{pointsPerHour} PTS / HR</span></td>
                 </tr>
                 <tr>
-                  <td><span className="status-label">Pending Rewards</span></td>
-                  <td><span className="status-value text-dim">— VOXX</span></td>
+                  <td><span className="status-label">Total Points</span></td>
+                  <td><span className="status-value text-dim">{totalPoints || '—'} PTS</span></td>
                 </tr>
                 <tr>
-                  <td><span className="status-label">Claimable</span></td>
-                  <td><span className="status-value text-dim">—</span></td>
+                  <td><span className="status-label">Staking Duration</span></td>
+                  <td><span className="status-value text-dim">{maxDuration > 0 ? `${maxDuration.toFixed(1)} days` : '—'}</span></td>
                 </tr>
               </tbody>
             </table>

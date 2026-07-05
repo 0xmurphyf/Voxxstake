@@ -1,37 +1,15 @@
 import { IStake } from '../models/Stake';
-import { Tier, StakingPosition, BASE_POINTS_PER_DAY } from '../types';
-
-export const DEFAULT_TIERS: Tier[] = [
-  { name: 'Bronze', multiplier: 1.0, min_days: 0, apy: 10.0 },
-  { name: 'Silver', multiplier: 1.5, min_days: 7, apy: 15.0 },
-  { name: 'Gold', multiplier: 2.0, min_days: 30, apy: 20.0 },
-  { name: 'Platinum', multiplier: 3.0, min_days: 90, apy: 30.0 },
-];
+import { StakingPosition, POINTS_PER_NFT_PER_HOUR, HOLDING_MULTIPLIER_STEP, HOLDING_MULTIPLIER_BONUS } from '../types';
 
 /**
- * Get the tier for a given staking duration.
- *
- * TIER RULES:
- *   The tier is determined by the TOTAL staking duration (all sessions
- *   combined). The entire holding period is recalculated at the new tier's
- *   multiplier — not just the time spent above the threshold.
- *
- *   Example: A user stakes for 8 days.
- *     - Days 1-7: 7 × 10 × 1.0  (Bronze)
- *     - Days 7-8: 1 × 10 × 1.5  (Silver)
- *     Total = 70 + 15 = 85  ← WRONG (if "only above threshold")
- *
- *     ACTUAL behavior: the ENTIRE 8 days × 1.5 = 120 points
- *     This rewards long-term holders with a bonus on all past time.
- *
- * Sorts tiers descending by min_days, returns first match.
+ * Calculate holding multiplier based on number of NFTs held.
+ * Base: 1.0x
+ * +0.1x for every 10 NFTs (≥10 → 1.1x, ≥20 → 1.2x, etc.)
  */
-export function getTierForDuration(durationDays: number, tiers: Tier[]): Tier {
-  const sorted = [...tiers].sort((a, b) => b.min_days - a.min_days);
-  for (const tier of sorted) {
-    if (durationDays >= tier.min_days) return tier;
-  }
-  return sorted[sorted.length - 1] || DEFAULT_TIERS[0];
+export function getHoldingMultiplier(nftCount: number): number {
+  if (nftCount < HOLDING_MULTIPLIER_STEP) return 1.0;
+  const steps = Math.floor(nftCount / HOLDING_MULTIPLIER_STEP);
+  return 1.0 + steps * HOLDING_MULTIPLIER_BONUS;
 }
 
 /**
@@ -47,22 +25,19 @@ export function computeTotalActiveSeconds(stake: IStake, now: Date): number {
 }
 
 /**
- * Compute lore points, duration, and tier from total active seconds.
+ * Compute lore points for a single NFT.
  *
- * Points are rounded to the nearest integer for consistent frontend/backend
- * comparison. Floating-point drift from fractional seconds is avoided.
- *
- * Formula: points = round(durationDays × BASE_POINTS_PER_DAY × tier.multiplier)
+ * Formula: points = total_hours × POINTS_PER_NFT_PER_HOUR × holding_multiplier
+ * Points are rounded to the nearest integer.
  */
 export function computePoints(
   totalActiveSeconds: number,
-  tiers: Tier[]
-): { points: number; durationDays: number; tier: Tier } {
+  holdingMultiplier: number
+): { points: number; durationDays: number } {
   const durationDays = totalActiveSeconds / 86400;
-  const tier = getTierForDuration(durationDays, tiers);
-  // Round to integer for consistency — avoids floating-point mismatches
-  const points = Math.round(durationDays * BASE_POINTS_PER_DAY * tier.multiplier);
-  return { points, durationDays, tier };
+  const totalHours = totalActiveSeconds / 3600;
+  const points = Math.round(totalHours * POINTS_PER_NFT_PER_HOUR * holdingMultiplier);
+  return { points, durationDays };
 }
 
 /**
@@ -70,12 +45,12 @@ export function computePoints(
  */
 export function buildPositionFromStake(
   stake: IStake,
-  tiers: Tier[],
+  holdingMultiplier: number,
   ownedSet: Set<string> | null
 ): StakingPosition {
   const now = new Date();
   const totalActiveSeconds = computeTotalActiveSeconds(stake, now);
-  const { points, durationDays, tier } = computePoints(totalActiveSeconds, tiers);
+  const { points, durationDays } = computePoints(totalActiveSeconds, holdingMultiplier);
 
   return {
     object_id: stake.object_id,
@@ -87,7 +62,7 @@ export function buildPositionFromStake(
     status: stake.status,
     lore_points: points,
     duration_days: durationDays,
-    tier: tier.name,
+    holding_multiplier: holdingMultiplier,
     is_owned: ownedSet !== null
       ? ownedSet.has(stake.object_id)
       : stake.status === 'active',
@@ -100,7 +75,9 @@ export function buildPositionFromStake(
  */
 export function buildStatsFromPositions(
   positions: StakingPosition[],
-  sellAlerts: string[]
+  sellAlerts: string[],
+  nftCount: number,
+  holdingMultiplier: number
 ) {
   const sorted = [...positions].sort((a, b) => {
     if (a.status !== b.status) {
@@ -113,6 +90,8 @@ export function buildStatsFromPositions(
     total_active: sorted.filter((p) => p.status === 'active').length,
     total_paused: sorted.filter((p) => p.status === 'paused').length,
     total_lore_points: sorted.reduce((sum, p) => sum + p.lore_points, 0),
+    nft_count: nftCount,
+    holding_multiplier: holdingMultiplier,
     positions: sorted,
     sell_alerts: sellAlerts,
   };

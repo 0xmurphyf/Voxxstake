@@ -1,8 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { Stake } from '../models/Stake';
-import { Tier } from '../models/Tier';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
-import { DEFAULT_TIERS } from '../services/staking';
+import { getHoldingMultiplier, computeTotalActiveSeconds, computePoints } from '../services/staking';
 import { config } from '../config';
 
 const router = Router();
@@ -34,56 +33,6 @@ function requireAdmin(req: AuthRequest, res: Response): boolean {
   return true;
 }
 
-// ─── GET /api/admin/tiers ───────────────────────────────────────
-// Public: anyone can read current tiers
-router.get('/tiers', async (_req: Request, res: Response) => {
-  try {
-    const tiers = await Tier.find({}).lean();
-    if (!tiers || tiers.length === 0) {
-      res.json({ tiers: DEFAULT_TIERS });
-      return;
-    }
-    res.json({ tiers });
-  } catch (err) {
-    console.error('Get tiers error:', err);
-    res.status(500).json({ detail: 'Failed to load tiers' });
-  }
-});
-
-// ─── POST /api/admin/tiers ──────────────────────────────────────
-// Admin only: replace tier configuration
-router.post('/tiers', authMiddleware, async (req: AuthRequest, res: Response) => {
-  if (!requireAdmin(req, res)) return;
-
-  try {
-    const { tiers } = req.body;
-    if (!tiers || !Array.isArray(tiers)) {
-      res.status(400).json({ detail: 'tiers array is required' });
-      return;
-    }
-
-    // Validate tier fields
-    for (const t of tiers) {
-      if (!t.name || typeof t.multiplier !== 'number' || typeof t.min_days !== 'number') {
-        res.status(400).json({ detail: `Invalid tier: ${JSON.stringify(t)}. Required fields: name, multiplier, min_days` });
-        return;
-      }
-    }
-
-    // Replace all tiers
-    await Tier.deleteMany({});
-    if (tiers.length > 0) {
-      await Tier.insertMany(tiers);
-    }
-
-    const updated = await Tier.find({}).lean();
-    res.json({ tiers: updated.length > 0 ? updated : DEFAULT_TIERS });
-  } catch (err) {
-    console.error('Update tiers error:', err);
-    res.status(500).json({ detail: 'Failed to update tiers' });
-  }
-});
-
 // ─── GET /api/admin/stats ───────────────────────────────────────
 // Admin only: global staking statistics
 router.get('/stats', authMiddleware, async (req: AuthRequest, res: Response) => {
@@ -98,36 +47,29 @@ router.get('/stats', authMiddleware, async (req: AuthRequest, res: Response) => 
       (s) => s.status === 'active'
     ).length;
 
-    // Sum points from all stakes
-    const tiers = await Tier.find({}).lean();
-    const tierList = tiers.length > 0 ? tiers : DEFAULT_TIERS;
-    let totalPoints = 0.0;
+    // Group by address to compute per-user holding multiplier
     const now = new Date();
-
+    const addressActiveCount = new Map<string, number>();
     for (const s of allStakes) {
-      let totalSec = s.total_staked_seconds || 0.0;
-      if (s.status === 'active' && s.current_session_start) {
-        const sessionStart = new Date(s.current_session_start);
-        totalSec += Math.max(0.0, (now.getTime() - sessionStart.getTime()) / 1000);
+      if (s.status === 'active') {
+        addressActiveCount.set(s.address, (addressActiveCount.get(s.address) || 0) + 1);
       }
-      const durationDays = totalSec / 86400;
-      const sorted = [...tierList].sort((a, b) => b.min_days - a.min_days);
-      let mult = sorted[sorted.length - 1]?.multiplier || 1.0;
-      for (const t of sorted) {
-        if (durationDays >= t.min_days) {
-          mult = t.multiplier;
-          break;
-        }
-      }
-      // Round points to integer for consistency
-      totalPoints += Math.round(durationDays * 10.0 * mult);
+    }
+
+    let totalPoints = 0.0;
+    for (const s of allStakes) {
+      const nftCount = addressActiveCount.get(s.address) || 0;
+      const mult = getHoldingMultiplier(nftCount);
+      const totalSec = computeTotalActiveSeconds(s as unknown as import('../models/Stake').IStake, now);
+      const { points } = computePoints(totalSec, mult);
+      totalPoints += points;
     }
 
     res.json({
       total_users: uniqueUsers,
       total_stakes: totalStakes,
       total_active_stakes: activeStakes,
-      total_points_distributed: totalPoints,
+      total_points_distributed: Math.round(totalPoints),
     });
   } catch (err) {
     console.error('Admin stats error:', err);

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useWallet } from '@suiet/wallet-kit';
 import axios from 'axios';
 
@@ -7,11 +7,25 @@ const API = `${BACKEND_URL}/api`;
 
 export function useWalletAuth() {
   const wallet = useWallet();
-  const [authToken, setAuthToken] = useState(null);
+  const [authToken, setAuthToken] = useState(() => {
+    // Initialize from localStorage on first render — survives page close
+    return localStorage.getItem('sui_auth_token') || null;
+  });
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [authError, setAuthError] = useState(null);
 
-  async function login() {
+  // When wallet connects after page reload, check if we already have a token
+  // If so, the user is already authenticated — no need to re-sign
+  useEffect(() => {
+    if (wallet.connected) {
+      const existing = localStorage.getItem('sui_auth_token');
+      if (existing && !authToken) {
+        setAuthToken(existing);
+      }
+    }
+  }, [wallet.connected]);
+
+  const login = useCallback(async () => {
     if (!wallet.account) {
       throw new Error('No wallet connected');
     }
@@ -59,20 +73,20 @@ export function useWalletAuth() {
       setIsAuthenticating(false);
       throw error;
     }
-  }
+  }, [wallet.account, wallet.signPersonalMessage, wallet.signMessage]);
 
-  function logout() {
+  const logout = useCallback(() => {
     setAuthToken(null);
     localStorage.removeItem('sui_auth_token');
-  }
+  }, []);
 
-  function loadToken() {
+  const loadToken = useCallback(() => {
     const token = localStorage.getItem('sui_auth_token');
     if (token) {
       setAuthToken(token);
     }
     return token;
-  }
+  }, []);
 
   return { authToken, login, logout, isAuthenticating, authError, loadToken };
 }

@@ -1,16 +1,15 @@
 import { Router, Response } from 'express';
 import { Stake } from '../models/Stake';
-import { Tier, ITier } from '../models/Tier';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { getOwnedObjects, getNftMetadata } from '../services/sui';
 import {
-  DEFAULT_TIERS,
   buildPositionFromStake,
   buildStatsFromPositions,
   computeTotalActiveSeconds,
   computePoints,
+  getHoldingMultiplier,
 } from '../services/staking';
-import { VOXX_TYPE, Tier as TierType } from '../types';
+import { VOXX_TYPE } from '../types';
 import { config } from '../config';
 
 const router = Router();
@@ -37,36 +36,12 @@ function setSyncRateLimit(address: string): void {
 }
 
 /**
- * Convert Mongoose ITier[] to plain TierType[].
- */
-function toTierType(tiers: ITier[]): TierType[] {
-  return tiers.map((t) => ({
-    name: t.name,
-    multiplier: t.multiplier,
-    min_days: t.min_days,
-    apy: t.apy,
-  }));
-}
-
-/**
- * Load tiers from DB, fall back to defaults.
- */
-async function loadTiers(): Promise<TierType[]> {
-  const tiers = await Tier.find({}).lean();
-  if (!tiers || tiers.length === 0) {
-    return [...DEFAULT_TIERS];
-  }
-  return toTierType(tiers as unknown as ITier[]);
-}
-
-/**
  * Sync helper: for a given address, pull chain data and update DB.
  * Returns { ownedMap, sellAlerts }.
  */
 async function syncStakesForAddress(
   address: string
 ): Promise<{ ownedMap: Map<string, { name: string; image_url: string | null }>; sellAlerts: string[] }> {
-  const tiers = await loadTiers();
   const now = new Date();
   const nowIso = now.toISOString();
 
@@ -123,10 +98,7 @@ async function syncStakesForAddress(
     }
   }
 
-  // 2) Pause stakes for NFTs no longer in wallet (sold / transferred away)
-  //    IMPORTANT: On Sui, transfer does NOT change objectId, so we track
-  //    by objectId. If an NFT is burn+reminted it gets a new objectId and
-  //    is treated as a new stake — the old one stays paused indefinitely.
+  // 2) Pause stakes for NFTs no longer in wallet
   for (const [objId, stake] of existingMap) {
     if (!ownedMap.has(objId) && stake.status === 'active') {
       let sessionSeconds = 0.0;
@@ -147,16 +119,18 @@ async function syncStakesForAddress(
 }
 
 // ─── GET /api/staking/cached ───────────────────────────────────
-// Fast DB-only read. Returns last_synced timestamp and synced flag
-// so the frontend can show data freshness.
+// Fast DB-only read.
 router.get('/cached', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const address = req.address!;
-    const tiers = await loadTiers();
 
     const stakes = await Stake.find({ address }).lean();
+    const nftCount = stakes.filter(s => s.status === 'active').length;
+    const holdingMultiplier = getHoldingMultiplier(nftCount);
+
+    const ownedSet = new Set(stakes.filter(s => s.status === 'active').map(s => s.object_id));
     const positions = stakes.map((s) =>
-      buildPositionFromStake(s as unknown as import('../models/Stake').IStake, tiers, null)
+      buildPositionFromStake(s as unknown as import('../models/Stake').IStake, holdingMultiplier, ownedSet)
     );
 
     // Determine sync status
@@ -168,7 +142,7 @@ router.get('/cached', authMiddleware, async (req: AuthRequest, res: Response) =>
       .reverse();
     const last_synced = lastSyncedTimestamps.length > 0 ? lastSyncedTimestamps[0] : null;
 
-    const stats = buildStatsFromPositions(positions, []);
+    const stats = buildStatsFromPositions(positions, [], nftCount, holdingMultiplier);
     res.json({
       ...stats,
       synced: hasEverSynced,
@@ -198,19 +172,20 @@ router.post('/sync', authMiddleware, async (req: AuthRequest, res: Response) => 
     setSyncRateLimit(address);
 
     const { ownedMap, sellAlerts } = await syncStakesForAddress(address);
-    const tiers = await loadTiers();
+    const nftCount = ownedMap.size;
+    const holdingMultiplier = getHoldingMultiplier(nftCount);
 
     const freshStakes = await Stake.find({ address }).lean();
     const ownedSet = new Set(ownedMap.keys());
     const positions = freshStakes.map((s) =>
       buildPositionFromStake(
         s as unknown as import('../models/Stake').IStake,
-        tiers,
+        holdingMultiplier,
         ownedSet
       )
     );
 
-    const stats = buildStatsFromPositions(positions, sellAlerts);
+    const stats = buildStatsFromPositions(positions, sellAlerts, nftCount, holdingMultiplier);
     const lastSyncedTimestamps = freshStakes
       .map(s => s.last_synced)
       .filter(Boolean)
@@ -236,12 +211,14 @@ router.get('/positions', authMiddleware, async (req: AuthRequest, res: Response)
   if (checkSyncRateLimit(address)) {
     // Fall back to cached data if rate-limited
     try {
-      const tiers = await loadTiers();
       const stakes = await Stake.find({ address }).lean();
+      const nftCount = stakes.filter(s => s.status === 'active').length;
+      const holdingMultiplier = getHoldingMultiplier(nftCount);
+      const ownedSet = new Set(stakes.filter(s => s.status === 'active').map(s => s.object_id));
       const positions = stakes.map((s) =>
-        buildPositionFromStake(s as unknown as import('../models/Stake').IStake, tiers, null)
+        buildPositionFromStake(s as unknown as import('../models/Stake').IStake, holdingMultiplier, ownedSet)
       );
-      const stats = buildStatsFromPositions(positions, []);
+      const stats = buildStatsFromPositions(positions, [], nftCount, holdingMultiplier);
       const lastSyncedTimestamps = stakes
         .map(s => s.last_synced)
         .filter(Boolean)
@@ -265,15 +242,16 @@ router.get('/positions', authMiddleware, async (req: AuthRequest, res: Response)
     setSyncRateLimit(address);
 
     const { ownedMap, sellAlerts } = await syncStakesForAddress(address);
-    const tiers = await loadTiers();
+    const nftCount = ownedMap.size;
+    const holdingMultiplier = getHoldingMultiplier(nftCount);
 
     const freshStakes = await Stake.find({ address }).lean();
     const ownedSet = new Set(ownedMap.keys());
     const positions = freshStakes.map((s) =>
-      buildPositionFromStake(s as unknown as import('../models/Stake').IStake, tiers, ownedSet)
+      buildPositionFromStake(s as unknown as import('../models/Stake').IStake, holdingMultiplier, ownedSet)
     );
 
-    const stats = buildStatsFromPositions(positions, sellAlerts);
+    const stats = buildStatsFromPositions(positions, sellAlerts, nftCount, holdingMultiplier);
     const lastSyncedTimestamps = freshStakes
       .map(s => s.last_synced)
       .filter(Boolean)
@@ -299,21 +277,23 @@ router.get('/nft/:objectId', authMiddleware, async (req: AuthRequest, res: Respo
 
     const metadata = await getNftMetadata(objectId);
 
-    const tiers = await loadTiers();
     const stake = await Stake.findOne({ address, object_id: objectId }).lean();
+
+    // Count active stakes to determine holding multiplier
+    const activeCount = await Stake.countDocuments({ address, status: 'active' });
+    const holdingMultiplier = getHoldingMultiplier(activeCount);
 
     let position: Record<string, unknown> | null = null;
     if (stake) {
       const s = stake as unknown as import('../models/Stake').IStake;
       const now = new Date();
       const totalActiveSeconds = computeTotalActiveSeconds(s, now);
-      const { points, durationDays, tier } = computePoints(totalActiveSeconds, tiers);
+      const { points, durationDays } = computePoints(totalActiveSeconds, holdingMultiplier);
       position = {
         status: s.status,
         lore_points: points,
         duration_days: durationDays,
-        tier: tier.name,
-        tier_multiplier: tier.multiplier,
+        holding_multiplier: holdingMultiplier,
         created_at: s.created_at,
         current_session_start: s.current_session_start,
       };
