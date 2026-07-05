@@ -1,18 +1,61 @@
 import { config } from '../config';
 import { VOXX_TYPE } from '../types';
 
-// ─── Low-level JSON-RPC call ────────────────────────────────────
+// ─── RPC endpoint list (primary + failovers) ───────────────────
+const RPC_URLS = [config.suiRpcUrl, ...config.suiRpcFailoverUrls].filter(Boolean);
+const RPC_TIMEOUT_MS = config.suiRpcTimeoutMs;
+
+// ─── Low-level JSON-RPC call with failover ──────────────────────
 async function rpcCall(method: string, params: unknown[]): Promise<unknown> {
-  const body = { jsonrpc: '2.0', id: 1, method, params };
-  const res = await fetch(config.suiRpcUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`RPC error: ${res.status}`);
-  const data = (await res.json()) as { error?: { message: string }; result?: unknown };
-  if (data.error) throw new Error(data.error.message);
-  return data.result;
+  const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method, params });
+
+  let lastError: Error | null = null;
+
+  for (let i = 0; i < RPC_URLS.length; i++) {
+    const url = RPC_URLS[i];
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), RPC_TIMEOUT_MS);
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!res.ok) {
+        lastError = new Error(`RPC error: ${res.status} from ${url}`);
+        continue; // try next endpoint
+      }
+
+      const data = (await res.json()) as { error?: { message: string }; result?: unknown };
+      if (data.error) {
+        lastError = new Error(data.error.message);
+        // Some errors are not retryable (e.g. "Invalid params")
+        if (data.error.message?.includes('Invalid params')) {
+          throw lastError;
+        }
+        continue;
+      }
+
+      return data.result;
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        lastError = new Error(`RPC timeout after ${RPC_TIMEOUT_MS}ms: ${url}`);
+      } else {
+        lastError = err instanceof Error ? err : new Error(String(err));
+      }
+      // If this looks like a non-retryable error, throw immediately
+      if (lastError.message?.includes('Invalid params')) {
+        throw lastError;
+      }
+    }
+  }
+
+  throw lastError || new Error('All RPC endpoints failed');
 }
 
 // ─── Get single object ──────────────────────────────────────────

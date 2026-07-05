@@ -13,10 +13,11 @@ async function main() {
 
   const app = express();
 
-  // CORS
+  // CORS — production must explicitly set CORS_ORIGINS
+  const corsOrigin = config.corsOrigins.length === 0 ? false : config.corsOrigins;
   app.use(
     cors({
-      origin: config.corsOrigins,
+      origin: corsOrigin,
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
       allowedHeaders: ['*'],

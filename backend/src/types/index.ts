@@ -79,5 +79,5 @@ export const VOXX_TYPE =
 
 export const BASE_POINTS_PER_DAY = 10.0;
 export const NONCE_EXPIRY_SECONDS = 300;
-export const JWT_EXPIRY_HOURS = 12;
+export const JWT_EXPIRY_HOURS = 24;
 export const JWT_ALGORITHM = 'HS256';

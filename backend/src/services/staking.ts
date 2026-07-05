@@ -10,6 +10,20 @@ export const DEFAULT_TIERS: Tier[] = [
 
 /**
  * Get the tier for a given staking duration.
+ *
+ * TIER RULES:
+ *   The tier is determined by the TOTAL staking duration (all sessions
+ *   combined). The entire holding period is recalculated at the new tier's
+ *   multiplier — not just the time spent above the threshold.
+ *
+ *   Example: A user stakes for 8 days.
+ *     - Days 1-7: 7 × 10 × 1.0  (Bronze)
+ *     - Days 7-8: 1 × 10 × 1.5  (Silver)
+ *     Total = 70 + 15 = 85  ← WRONG (if "only above threshold")
+ *
+ *     ACTUAL behavior: the ENTIRE 8 days × 1.5 = 120 points
+ *     This rewards long-term holders with a bonus on all past time.
+ *
  * Sorts tiers descending by min_days, returns first match.
  */
 export function getTierForDuration(durationDays: number, tiers: Tier[]): Tier {
@@ -34,6 +48,11 @@ export function computeTotalActiveSeconds(stake: IStake, now: Date): number {
 
 /**
  * Compute lore points, duration, and tier from total active seconds.
+ *
+ * Points are rounded to the nearest integer for consistent frontend/backend
+ * comparison. Floating-point drift from fractional seconds is avoided.
+ *
+ * Formula: points = round(durationDays × BASE_POINTS_PER_DAY × tier.multiplier)
  */
 export function computePoints(
   totalActiveSeconds: number,
@@ -41,7 +60,8 @@ export function computePoints(
 ): { points: number; durationDays: number; tier: Tier } {
   const durationDays = totalActiveSeconds / 86400;
   const tier = getTierForDuration(durationDays, tiers);
-  const points = durationDays * BASE_POINTS_PER_DAY * tier.multiplier;
+  // Round to integer for consistency — avoids floating-point mismatches
+  const points = Math.round(durationDays * BASE_POINTS_PER_DAY * tier.multiplier);
   return { points, durationDays, tier };
 }
 

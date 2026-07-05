@@ -22,6 +22,7 @@ function normalizeAddress(addr: string): string {
 /**
  * POST /api/auth/nonce
  * Generate a nonce for wallet authentication.
+ * Old nonces for the same address are cleaned up before creating a new one.
  */
 router.post('/nonce', async (req: Request, res: Response) => {
   try {
@@ -32,6 +33,10 @@ router.post('/nonce', async (req: Request, res: Response) => {
     }
 
     const normalized = normalizeAddress(address);
+
+    // Clean up any existing unused nonces for this address (prevents accumulation)
+    await Nonce.deleteMany({ address: normalized, used: false });
+
     const nonce = crypto.randomBytes(16).toString('hex');
 
     await Nonce.create({
@@ -51,6 +56,7 @@ router.post('/nonce', async (req: Request, res: Response) => {
 /**
  * POST /api/auth/verify
  * Verify a Sui wallet signature and issue a JWT.
+ * Nonce is DELETED after successful verification (one-time use, anti-replay).
  */
 router.post('/verify', async (req: Request, res: Response) => {
   try {
@@ -62,20 +68,18 @@ router.post('/verify', async (req: Request, res: Response) => {
 
     const normalized = normalizeAddress(address);
 
-    // Look up nonce
-    const doc = await Nonce.findOne({ address: normalized, nonce });
+    // Look up nonce — must be unused and unexpired
+    const doc = await Nonce.findOne({ address: normalized, nonce, used: false });
     if (!doc) {
-      res.status(400).json({ detail: 'Invalid nonce' });
-      return;
-    }
-    if (doc.used) {
-      res.status(400).json({ detail: 'Nonce already used' });
+      res.status(400).json({ detail: 'Invalid or already used nonce' });
       return;
     }
 
     // Check expiry
     const age = (Date.now() - doc.created_at.getTime()) / 1000;
     if (age > NONCE_EXPIRY_SECONDS) {
+      // Delete expired nonce
+      await Nonce.deleteOne({ _id: doc._id });
       res.status(400).json({ detail: 'Nonce expired' });
       return;
     }
@@ -101,15 +105,15 @@ router.post('/verify', async (req: Request, res: Response) => {
       return;
     }
 
-    // Mark nonce as used
-    doc.used = true;
-    await doc.save();
+    // DELETE the nonce immediately — one-time use, anti-replay
+    await Nonce.deleteOne({ _id: doc._id });
 
-    // Issue JWT
+    // Issue JWT with exp claim
+    const now = Math.floor(Date.now() / 1000);
     const payload = {
       sub: normalized,
-      exp: Math.floor(Date.now() / 1000) + JWT_EXPIRY_HOURS * 3600,
-      iat: Math.floor(Date.now() / 1000),
+      exp: now + JWT_EXPIRY_HOURS * 3600,
+      iat: now,
     };
     const token = jwt.sign(payload, config.jwtSecret, { algorithm: JWT_ALGORITHM as jwt.Algorithm });
 

@@ -3,26 +3,46 @@ import { Stake } from '../models/Stake';
 import { Tier } from '../models/Tier';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { DEFAULT_TIERS } from '../services/staking';
+import { config } from '../config';
 
 const router = Router();
 
 /**
- * Check if address is admin (currently allows all — matches Python behavior).
+ * Check if the authenticated address is an admin.
+ * Admins are configured via ADMIN_ADDRESSES env var (comma-separated).
+ * If no admin addresses are configured, all access is denied.
  */
-function isAdmin(_address: string): boolean {
+function isAdmin(address: string): boolean {
+  if (!config.adminAddresses || config.adminAddresses.length === 0) {
+    return false;
+  }
+  return config.adminAddresses.includes(address.toLowerCase());
+}
+
+/**
+ * Require admin. Returns 403 if not admin.
+ */
+function requireAdmin(req: AuthRequest, res: Response): boolean {
+  if (!req.address) {
+    res.status(401).json({ detail: 'Authentication required' });
+    return false;
+  }
+  if (!isAdmin(req.address)) {
+    res.status(403).json({ detail: 'Admin access required' });
+    return false;
+  }
   return true;
 }
 
 // ─── GET /api/admin/tiers ───────────────────────────────────────
+// Public: anyone can read current tiers
 router.get('/tiers', async (_req: Request, res: Response) => {
   try {
     const tiers = await Tier.find({}).lean();
-
     if (!tiers || tiers.length === 0) {
       res.json({ tiers: DEFAULT_TIERS });
       return;
     }
-
     res.json({ tiers });
   } catch (err) {
     console.error('Get tiers error:', err);
@@ -31,18 +51,23 @@ router.get('/tiers', async (_req: Request, res: Response) => {
 });
 
 // ─── POST /api/admin/tiers ──────────────────────────────────────
+// Admin only: replace tier configuration
 router.post('/tiers', authMiddleware, async (req: AuthRequest, res: Response) => {
-  try {
-    const address = req.address!;
-    if (!isAdmin(address)) {
-      res.status(403).json({ detail: 'Admin access required' });
-      return;
-    }
+  if (!requireAdmin(req, res)) return;
 
+  try {
     const { tiers } = req.body;
     if (!tiers || !Array.isArray(tiers)) {
       res.status(400).json({ detail: 'tiers array is required' });
       return;
+    }
+
+    // Validate tier fields
+    for (const t of tiers) {
+      if (!t.name || typeof t.multiplier !== 'number' || typeof t.min_days !== 'number') {
+        res.status(400).json({ detail: `Invalid tier: ${JSON.stringify(t)}. Required fields: name, multiplier, min_days` });
+        return;
+      }
     }
 
     // Replace all tiers
@@ -60,15 +85,12 @@ router.post('/tiers', authMiddleware, async (req: AuthRequest, res: Response) =>
 });
 
 // ─── GET /api/admin/stats ───────────────────────────────────────
+// Admin only: global staking statistics
 router.get('/stats', authMiddleware, async (req: AuthRequest, res: Response) => {
-  try {
-    const address = req.address!;
-    if (!isAdmin(address)) {
-      res.status(403).json({ detail: 'Admin access required' });
-      return;
-    }
+  if (!requireAdmin(req, res)) return;
 
-    const allStakes = await Stake.find({}, { address: 1, status: 1, _id: 0 }).lean();
+  try {
+    const allStakes = await Stake.find({}, { address: 1, status: 1, total_staked_seconds: 1, current_session_start: 1, _id: 0 }).lean();
 
     const uniqueUsers = new Set(allStakes.map((s) => s.address)).size;
     const totalStakes = allStakes.length;
@@ -97,7 +119,8 @@ router.get('/stats', authMiddleware, async (req: AuthRequest, res: Response) => 
           break;
         }
       }
-      totalPoints += durationDays * 10.0 * mult;
+      // Round points to integer for consistency
+      totalPoints += Math.round(durationDays * 10.0 * mult);
     }
 
     res.json({
