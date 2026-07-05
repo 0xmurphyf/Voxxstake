@@ -14,13 +14,13 @@ import { IDCard } from './components/IDCard';
 import {
   Cube, ListNumbers, Cpu,
   Wallet, ShieldCheck, Fingerprint, IdentificationBadge, Clock, Scales,
-  Warning, SignOut, Lightning, ArrowsClockwise
+  Warning, SignOut, Lightning
 } from '@phosphor-icons/react';
 
 /* ============================================================
    LANDING PAGE — Neoterra Citizenship Registry
    ============================================================ */
-function HomePage({ authToken, login, isAuthenticating, authError, loadToken }) {
+function HomePage({ authToken, login, isAuthenticating, authError, logout, loadToken }) {
   const wallet = useWallet();
   const { positions, stats, sellAlerts, loading, syncing } = useStaking(authToken);
   const [activeTab, setActiveTab] = useState('nfts');
@@ -73,12 +73,14 @@ function HomePage({ authToken, login, isAuthenticating, authError, loadToken }) 
                         <><Fingerprint size={16} weight="fill" className="inline mr-2" />VERIFY IDENTITY</>
                       )}
                     </button>
-                    <ConnectButton>
-                      <button className="wallet-connect-btn" data-testid="change-wallet-button">
-                        <ArrowsClockwise size={16} weight="bold" />
-                        CHANGE WALLET
-                      </button>
-                    </ConnectButton>
+                    <button
+                      onClick={() => { logout(); wallet.disconnect(); }}
+                      className="wallet-connect-btn"
+                      data-testid="change-wallet-button"
+                    >
+                      <SignOut size={16} weight="bold" />
+                      DISCONNECT
+                    </button>
                   </div>
                 ) : (
                   <ConnectButton>
@@ -291,6 +293,7 @@ function App() {
             <HomePage
               authToken={authToken}
               login={login}
+              logout={logout}
               loadToken={loadToken}
               isAuthenticating={isAuthenticating}
               authError={authError}
