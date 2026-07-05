@@ -7,10 +7,10 @@ import { useWalletAuth } from './hooks/useWalletAuth';
 import { useStaking } from './hooks/useStaking';
 import { StatsCards } from './components/StatsCards';
 import { NFTList } from './components/NFTList';
-import { StakingDashboard } from './components/StakingDashboard';
 import { NFTDetail } from './components/NFTDetail';
+import { WaitingList } from './components/WaitingList';
 import {
-  Cube, Stack, Cpu,
+  Cube, ListNumbers, Cpu,
   Wallet, ShieldCheck, Fingerprint, IdentificationBadge, Clock, Scales,
   Warning, SignOut, Lightning
 } from '@phosphor-icons/react';
@@ -103,11 +103,11 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
                     )}
                   </button>
                 ) : (
-                  <ConnectButton className="wallet-connect-btn">
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                      <Lightning size={16} weight="fill" />
+                  <ConnectButton>
+                    <button className="wallet-connect-btn" data-testid="connect-wallet-button">
+                      <Lightning size={18} weight="fill" />
                       CONNECT WALLET
-                    </span>
+                    </button>
                   </ConnectButton>
                 )}
                 {wallet.connected && (
@@ -276,8 +276,8 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
             <button onClick={() => setActiveTab('nfts')} className={`tab-btn ${activeTab === 'nfts' ? 'active' : ''}`} data-testid="tab-nfts">
               <Cube size={12} weight="bold" className="inline mr-2" />CREDENTIALS
             </button>
-            <button onClick={() => setActiveTab('dashboard')} className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`} data-testid="tab-dashboard">
-              <Stack size={12} weight="bold" className="inline mr-2" />STANDING
+            <button onClick={() => setActiveTab('waiting')} className={`tab-btn ${activeTab === 'waiting' ? 'active' : ''}`} data-testid="tab-waiting">
+              <ListNumbers size={12} weight="bold" className="inline mr-2" />WAITING LIST
             </button>
           </div>
 
@@ -288,9 +288,9 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
             </div>
           )}
 
-          {activeTab === 'dashboard' && (
-            <div data-testid="dashboard-tab-content" className="mt-6">
-              <StakingDashboard positions={positions} sellAlerts={sellAlerts} />
+          {activeTab === 'waiting' && (
+            <div data-testid="waiting-tab-content" className="mt-6">
+              <WaitingList authToken={authToken} />
             </div>
           )}
         </>
