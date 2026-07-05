@@ -7,6 +7,7 @@ import { connectDB } from './db';
 import authRouter from './routes/auth';
 import stakingRouter from './routes/staking';
 import rankingRouter from './routes/ranking';
+import profileRouter from './routes/profile';
 import adminRouter from './routes/admin';
 import { startBackgroundSync } from './services/backgroundSync';
 
@@ -52,6 +53,7 @@ async function main() {
   apiRouter.use('/auth', authRouter);
   apiRouter.use('/staking', stakingRouter);
   apiRouter.use('/ranking', rankingRouter);
+  apiRouter.use('/profile', profileRouter);
   apiRouter.use('/admin', adminRouter);
 
   app.use('/api', apiRouter);

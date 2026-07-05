@@ -26,16 +26,54 @@ export function IDCard({ positions, stats, walletAddress, authToken }) {
     return max;
   }, 0) || 0;
 
-  // PFP state
-  const [pfpUrl, setPfpUrl] = useState(() => localStorage.getItem('neoterra_pfp') || null);
-  const [selectingPfp, setSelectingPfp] = useState(false);
+  // Profile state — loaded from backend
+  const [displayName, setDisplayName] = useState('');
+  const [pfpUrl, setPfpUrl] = useState(null);
+  const [pfpObjectId, setPfpObjectId] = useState(null);
   const [pfpValid, setPfpValid] = useState(true);
   const [checkingPfp, setCheckingPfp] = useState(false);
 
-  // Name state
-  const [displayName, setDisplayName] = useState(() => localStorage.getItem('neoterra_name') || '');
+  // Edit state
   const [editingName, setEditingName] = useState(false);
-  const [nameDraft, setNameDraft] = useState(displayName);
+  const [nameDraft, setNameDraft] = useState('');
+  const [selectingPfp, setSelectingPfp] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // Load profile from backend
+  const loadProfile = useCallback(async () => {
+    if (!authToken) return;
+    try {
+      const r = await axios.get(`${API}/profile`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      const { name, pfp_url, pfp_object_id } = r.data;
+      setDisplayName(name || '');
+      setPfpUrl(pfp_url || null);
+      setPfpObjectId(pfp_object_id || null);
+      setNameDraft(name || '');
+    } catch (err) {
+      console.error('Failed to load profile:', err);
+    }
+  }, [authToken]);
+
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
+
+  // Save profile to backend
+  const saveProfile = useCallback(async (updates) => {
+    if (!authToken) return;
+    setSaving(true);
+    try {
+      await axios.put(`${API}/profile`, updates, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+    } catch (err) {
+      console.error('Failed to save profile:', err);
+    } finally {
+      setSaving(false);
+    }
+  }, [authToken]);
 
   // Verify PFP is still held on-chain
   const verifyPfp = useCallback(async (objectId) => {
@@ -54,38 +92,33 @@ export function IDCard({ positions, stats, walletAddress, authToken }) {
     }
   }, [authToken]);
 
-  // On mount, verify existing PFP
+  // On mount, verify existing PFP is still held
   useEffect(() => {
-    const stored = localStorage.getItem('neoterra_pfp');
-    const storedId = localStorage.getItem('neoterra_pfp_id');
-    if (stored && storedId) {
-      verifyPfp(storedId).then(valid => {
+    if (pfpObjectId && pfpUrl) {
+      verifyPfp(pfpObjectId).then(valid => {
         if (!valid) {
-          setPfpUrl(null);
           setPfpValid(false);
-          localStorage.removeItem('neoterra_pfp');
-          localStorage.removeItem('neoterra_pfp_id');
         } else {
           setPfpValid(true);
         }
       });
     }
-  }, [verifyPfp]);
+  }, [pfpObjectId, pfpUrl, verifyPfp]);
 
   const selectPfp = (position) => {
     const imgUrl = position.image_url || VOXX_PLACEHOLDER;
     setPfpUrl(imgUrl);
-    localStorage.setItem('neoterra_pfp', imgUrl);
-    localStorage.setItem('neoterra_pfp_id', position.object_id);
+    setPfpObjectId(position.object_id);
     setPfpValid(true);
     setSelectingPfp(false);
+    saveProfile({ pfp_url: imgUrl, pfp_object_id: position.object_id });
   };
 
   const saveName = () => {
-    const trimmed = nameDraft.trim();
+    const trimmed = nameDraft.trim().slice(0, 32);
     setDisplayName(trimmed);
-    localStorage.setItem('neoterra_name', trimmed);
     setEditingName(false);
+    saveProfile({ name: trimmed });
   };
 
   const cancelEditName = () => {
@@ -164,6 +197,7 @@ export function IDCard({ positions, stats, walletAddress, authToken }) {
                   placeholder="Enter your name..."
                   maxLength={32}
                   autoFocus
+                  disabled={saving}
                   className="term-input"
                   style={{
                     fontSize: '0.85rem',
@@ -174,7 +208,7 @@ export function IDCard({ positions, stats, walletAddress, authToken }) {
                   }}
                   data-testid="name-input"
                 />
-                <button onClick={saveName} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#00FFCC', padding: 2 }} data-testid="save-name-button">
+                <button onClick={saveName} disabled={saving} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#00FFCC', padding: 2 }} data-testid="save-name-button">
                   <FloppyDisk size={16} weight="bold" />
                 </button>
                 <button onClick={cancelEditName} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(0,255,204,0.5)', padding: 2 }} data-testid="cancel-name-button">
@@ -194,6 +228,7 @@ export function IDCard({ positions, stats, walletAddress, authToken }) {
                 >
                   <PencilSimple size={13} weight="bold" />
                 </button>
+                {saving && <span className="mono text-xs" style={{ color: 'rgba(0,255,204,0.4)' }}>saving...</span>}
               </div>
             )}
             {pfpValid && pfpUrl && (

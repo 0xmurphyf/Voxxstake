@@ -13,7 +13,7 @@ import { IDCard } from './components/IDCard';
 import {
   Cube, ListNumbers, Cpu,
   Wallet, ShieldCheck, Fingerprint, IdentificationBadge, Clock, Scales,
-  Warning, SignOut, Lightning
+  Warning, SignOut, Lightning, ArrowsClockwise
 } from '@phosphor-icons/react';
 
 /* ============================================================
@@ -38,22 +38,6 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
 
   return (
     <div className="app-container">
-      {/* ===== HEADER ===== */}
-      <header className="header-bar">
-        <div className="flex-1">
-          <p className="header-file-id">NEOTERRA_CITIZENSHIP_REGISTRY</p>
-          <div className="header-title-group">
-            <h1>CITIZENSHIP APPLICATION</h1>
-            <p className="header-subtitle">
-              Hold your Genesis NFT. Register for citizenship. Earn your place in Neoterra.
-            </p>
-          </div>
-        </div>
-        <div className="header-logo">
-          <Cpu size={32} weight="bold" />
-        </div>
-      </header>
-
       {/* Auth Error */}
       {authError && (
         <div className="alert-banner mb-5" data-testid="auth-error">
@@ -79,18 +63,26 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
 
               <div className="wallet-inline" style={{ marginTop: 24 }}>
                 {wallet.connected ? (
-                  <button
-                    onClick={login}
-                    disabled={isAuthenticating}
-                    className="wallet-connect-btn"
-                    data-testid="sign-in-button"
-                  >
-                    {isAuthenticating ? (
-                      <>VERIFYING...</>
-                    ) : (
-                      <><Fingerprint size={16} weight="fill" className="inline mr-2" />VERIFY IDENTITY</>
-                    )}
-                  </button>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <button
+                      onClick={login}
+                      disabled={isAuthenticating}
+                      className="wallet-connect-btn"
+                      data-testid="sign-in-button"
+                    >
+                      {isAuthenticating ? (
+                        <>VERIFYING...</>
+                      ) : (
+                        <><Fingerprint size={16} weight="fill" className="inline mr-2" />VERIFY IDENTITY</>
+                      )}
+                    </button>
+                    <ConnectButton>
+                      <button className="btn-ghost" data-testid="change-wallet-button">
+                        <ArrowsClockwise size={14} weight="bold" />
+                        CHANGE WALLET
+                      </button>
+                    </ConnectButton>
+                  </div>
                 ) : (
                   <ConnectButton>
                     <button className="wallet-connect-btn" data-testid="connect-wallet-button">
@@ -221,7 +213,7 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
             </div>
           </div>
 
-          {/* IDENTITY CARD — replaces old LIVE STATUS table */}
+          {/* IDENTITY CARD */}
           <IDCard
             positions={positions}
             stats={stats}
