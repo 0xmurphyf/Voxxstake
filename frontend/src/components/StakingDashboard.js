@@ -14,19 +14,19 @@ function formatDuration(days) {
 export function StakingDashboard({ positions, sellAlerts }) {
   const navigate = useNavigate();
   const activePositions = positions.filter((p) => p.status === 'active');
-  const pausedPositions = positions.filter((p) => p.status === 'paused');
+  const revokedPositions = positions.filter((p) => p.status === 'paused');
 
   return (
     <div className="space-y-6" data-testid="staking-dashboard">
-      {/* Sell Alerts */}
+      {/* Credential Revocation Alerts */}
       {sellAlerts && sellAlerts.length > 0 && (
         <div className="cp-alert cp-corner-cuts p-4 sm:p-5" data-testid="sell-alerts">
           <div className="flex items-start gap-3">
             <Warning size={24} weight="fill" className="text-[#FF003C] flex-shrink-0 mt-1" />
             <div className="flex-1">
-              <p className="hud-label text-[#FF5577] mb-1">SELL EVENT DETECTED</p>
+              <p className="hud-label text-[#FF5577] mb-1">CREDENTIAL REVOKED</p>
               <p className="text-sm text-[#FFB3C0]">
-                {sellAlerts.length} NFT{sellAlerts.length > 1 ? 's' : ''} no longer in your wallet. Staking paused — your Lore Points are preserved. If the NFT returns, staking will auto-resume.
+                {sellAlerts.length} credential{sellAlerts.length > 1 ? 's' : ''} no longer in your wallet. Citizenship standing paused — your credits are preserved. If the credential returns, registration will auto-resume.
               </p>
               <p className="mono text-xs text-[#FF5577] mt-2">
                 {sellAlerts.slice(0, 3).join(' • ')}
@@ -37,12 +37,12 @@ export function StakingDashboard({ positions, sellAlerts }) {
         </div>
       )}
 
-      {/* Active Stakes */}
+      {/* Active Registrations */}
       <section>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <Lightning size={20} weight="fill" className="text-[#00FF9D]" />
-            <h2 className="text-xl sm:text-2xl hud-value">ACTIVE STAKES</h2>
+            <h2 className="text-xl sm:text-2xl hud-value">ACTIVE REGISTRATIONS</h2>
             <span className="status-badge status-active">{activePositions.length}</span>
           </div>
         </div>
@@ -50,7 +50,7 @@ export function StakingDashboard({ positions, sellAlerts }) {
           <div className="cp-panel cp-corner-cuts p-6 sm:p-8 text-center" data-testid="no-active-stakes">
             <p className="hud-label mb-2">STATUS</p>
             <p className="text-sm text-[#8E78A8]">
-              No active stakes. Holding VOXX NFTs auto-initiates staking — try refreshing or connecting a wallet with VOXX.
+              No active citizenship registrations. Holding Genesis NFTs auto-registers you — try refreshing or connect a wallet with credentials.
             </p>
           </div>
         ) : (
@@ -80,14 +80,14 @@ export function StakingDashboard({ positions, sellAlerts }) {
                     <div>
                       <div className="flex items-center gap-1 mb-1">
                         <Clock size={12} className="text-[#8E78A8]" />
-                        <p className="hud-label">Duration</p>
+                        <p className="hud-label">Registered</p>
                       </div>
                       <p className="hud-value text-white">{formatDuration(position.duration_days)}</p>
                     </div>
                     <div>
                       <div className="flex items-center gap-1 mb-1">
                         <Trophy size={12} className="text-[#00FFE5]" />
-                        <p className="hud-label">Lore Points</p>
+                        <p className="hud-label">Credits</p>
                       </div>
                       <p className="hud-value text-[#00FFE5]" data-testid={`active-points-${position.object_id}`}>
                         {position.lore_points.toFixed(0)}
@@ -101,16 +101,16 @@ export function StakingDashboard({ positions, sellAlerts }) {
         )}
       </section>
 
-      {/* Paused Stakes */}
-      {pausedPositions.length > 0 && (
+      {/* Revoked Registrations */}
+      {revokedPositions.length > 0 && (
         <section>
           <div className="flex items-center gap-3 mb-4">
             <Pause size={20} weight="fill" className="text-[#FF5577]" />
-            <h2 className="text-xl sm:text-2xl hud-value">PAUSED</h2>
-            <span className="status-badge status-paused">{pausedPositions.length}</span>
+            <h2 className="text-xl sm:text-2xl hud-value">REVOKED</h2>
+            <span className="status-badge status-paused">{revokedPositions.length}</span>
           </div>
           <div className="space-y-2">
-            {pausedPositions.map((position) => (
+            {revokedPositions.map((position) => (
               <div
                 key={position.object_id}
                 className="cp-panel-cyan p-4 flex items-center justify-between cursor-pointer hover:cp-glow-cyan transition-all"
@@ -124,7 +124,7 @@ export function StakingDashboard({ positions, sellAlerts }) {
                       {position.name || `VOXX #${position.object_id.slice(-6)}`}
                     </p>
                     <p className="mono text-xs text-[#8E78A8]">
-                      Locked: {formatDuration(position.duration_days)}
+                      Held: {formatDuration(position.duration_days)}
                     </p>
                   </div>
                 </div>
@@ -132,7 +132,7 @@ export function StakingDashboard({ positions, sellAlerts }) {
                   <p className="hud-value text-[#00FFE5] text-lg" data-testid={`paused-points-${position.object_id}`}>
                     {position.lore_points.toFixed(0)}
                   </p>
-                  <p className="hud-label">PTS</p>
+                  <p className="hud-label">CREDITS</p>
                 </div>
               </div>
             ))}

@@ -31,9 +31,9 @@ export function NFTList({ positions, loading }) {
       <div className="cp-panel cp-corner-cuts p-10 sm:p-12 text-center" data-testid="no-nfts-message">
         <Cube size={56} weight="duotone" className="mx-auto mb-4 text-[#B026FF]" />
         <p className="hud-label mb-2">SCAN RESULT</p>
-        <h3 className="text-xl sm:text-2xl hud-value mb-2">NO VOXX NFTS DETECTED</h3>
+        <h3 className="text-xl sm:text-2xl hud-value mb-2">NO CREDENTIALS DETECTED</h3>
         <p className="text-sm text-[#8E78A8]">
-          Your wallet currently holds no VOXX NFTs. Acquire one to begin auto-staking.
+          Your wallet holds no Genesis NFT credentials. Acquire one to register for Neoterra citizenship.
         </p>
       </div>
     );
@@ -65,12 +65,12 @@ export function NFTList({ positions, loading }) {
                   {isActive ? (
                     <span className="flex items-center gap-1">
                       <Lightning size={10} weight="fill" />
-                      AUTO-STAKED
+                      REGISTERED
                     </span>
                   ) : (
                     <span className="flex items-center gap-1">
                       <Pause size={10} weight="fill" />
-                      PAUSED
+                      REVOKED
                     </span>
                   )}
                 </span>
@@ -91,13 +91,13 @@ export function NFTList({ positions, loading }) {
 
             <div className="grid grid-cols-2 gap-3 mb-4 mt-auto">
               <div>
-                <p className="hud-label">Duration</p>
+                <p className="hud-label">Registered</p>
                 <p className="hud-value text-white text-sm" data-testid={`duration-${position.object_id}`}>
                   {formatDuration(position.duration_days)}
                 </p>
               </div>
               <div>
-                <p className="hud-label">Lore Points</p>
+                <p className="hud-label">Credits</p>
                 <p className="hud-value text-[#00FFE5] text-sm" data-testid={`points-${position.object_id}`}>
                   {position.lore_points.toFixed(0)}
                 </p>

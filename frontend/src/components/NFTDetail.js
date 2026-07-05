@@ -41,7 +41,7 @@ export function NFTDetail({ authToken }) {
         <p className="hud-label mb-1">ERROR</p>
         <p className="text-sm">{error}</p>
         <button onClick={() => navigate('/')} className="cp-btn-ghost px-4 py-2 mt-4 text-xs">
-          BACK TO DASHBOARD
+          BACK TO REGISTRY
         </button>
       </div>
     );
@@ -69,7 +69,7 @@ export function NFTDetail({ authToken }) {
       </button>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        {/* NFT Image */}
+        {/* Credential Image */}
         <div className="cp-panel cp-corner-cuts cp-glow-purple p-2 sm:p-3">
           <div className="nft-image-wrap aspect-square">
             <img
@@ -82,10 +82,10 @@ export function NFTDetail({ authToken }) {
           </div>
         </div>
 
-        {/* NFT Info */}
+        {/* Credential Info */}
         <div className="space-y-4">
           <div>
-            <p className="hud-label mb-2">VOXX INC. // NFT</p>
+            <p className="hud-label mb-2">NEOTERRA // CREDENTIAL</p>
             <h1 className="text-3xl sm:text-4xl hud-value glitch mb-2" data-testid="nft-detail-name">
               {metadata.name}
             </h1>
@@ -100,16 +100,16 @@ export function NFTDetail({ authToken }) {
                 <span className={`status-badge ${isActive ? 'status-active' : 'status-paused'}`} data-testid="nft-detail-status">
                   {isActive ? (
                     <span className="flex items-center gap-1">
-                      <Lightning size={11} weight="fill" /> AUTO-STAKED
+                      <Lightning size={11} weight="fill" /> REGISTERED
                     </span>
                   ) : (
                     <span className="flex items-center gap-1">
-                      <Pause size={11} weight="fill" /> PAUSED
+                      <Pause size={11} weight="fill" /> REVOKED
                     </span>
                   )}
                 </span>
                 <span className="status-badge badge-active" data-testid="nft-detail-multiplier">
-                  {mult.toFixed(1)}x MULTIPLIER
+                  {mult.toFixed(1)}x STANDING
                 </span>
               </div>
 
@@ -117,7 +117,7 @@ export function NFTDetail({ authToken }) {
                 <div>
                   <div className="flex items-center gap-1 mb-1">
                     <Clock size={12} className="text-[#8E78A8]" />
-                    <p className="hud-label">Total Staked</p>
+                    <p className="hud-label">Registered</p>
                   </div>
                   <p className="hud-value text-white text-lg" data-testid="nft-detail-duration">
                     {formatDuration(position.duration_days)}
@@ -126,7 +126,7 @@ export function NFTDetail({ authToken }) {
                 <div>
                   <div className="flex items-center gap-1 mb-1">
                     <Trophy size={12} className="text-[#00FFE5]" />
-                    <p className="hud-label">Lore Points</p>
+                    <p className="hud-label">Credits</p>
                   </div>
                   <p className="hud-value text-[#00FFE5] text-lg" data-testid="nft-detail-points">
                     {position.lore_points.toFixed(0)}
@@ -138,7 +138,7 @@ export function NFTDetail({ authToken }) {
                 <div className="mt-4 pt-4 border-t border-[#FF003C]/30">
                   <p className="text-xs text-[#FF5577] flex items-start gap-2">
                     <Pause size={14} weight="fill" className="flex-shrink-0 mt-0.5" />
-                    NFT not detected in wallet. Points preserved — staking will auto-resume when NFT returns.
+                    Credential not detected in wallet. Credits preserved — registration will auto-resume when credential returns.
                   </p>
                 </div>
               )}

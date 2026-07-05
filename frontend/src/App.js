@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
-import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import { Routes, Route, useNavigate } from 'react-router-dom';
 import { useWallet } from '@suiet/wallet-kit';
 import { ConnectButton } from '@suiet/wallet-kit';
 import { useWalletAuth } from './hooks/useWalletAuth';
@@ -11,12 +11,12 @@ import { StakingDashboard } from './components/StakingDashboard';
 import { NFTDetail } from './components/NFTDetail';
 import {
   Cube, Stack, Cpu,
-  Wallet, ShieldCheck, Power, Database, Gift,
+  Wallet, ShieldCheck, Fingerprint, IdentificationBadge, Clock, Scales,
   Warning, SignOut, Lightning
 } from '@phosphor-icons/react';
 
 /* ============================================================
-   LANDING PAGE — Terminal-style layout
+   LANDING PAGE — Neoterra Citizenship Registry
    ============================================================ */
 function HomePage({ authToken, login, isAuthenticating, authError, logout, loadToken }) {
   const wallet = useWallet();
@@ -50,11 +50,11 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
       {/* ===== HEADER ===== */}
       <header className="header-bar">
         <div className="flex-1">
-          <p className="header-file-id">FILE_05_NFT_STAKING</p>
+          <p className="header-file-id">NEOTERRA_CITIZENSHIP_REGISTRY</p>
           <div className="header-title-group">
-            <h1>NFT SOFT STAKING</h1>
+            <h1>CITIZENSHIP APPLICATION</h1>
             <p className="header-subtitle">
-              Stake your Genesis NFT. Keep it in your wallet. Earn continuously.
+              Hold your Genesis NFT. Register for citizenship. Earn your place in Neoterra.
             </p>
           </div>
         </div>
@@ -74,17 +74,18 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
       {!authToken ? (
         <>
           <div className="main-grid" style={{ marginBottom: 20 }}>
-            {/* LEFT: Protocol Overview */}
+            {/* LEFT: Citizenship Overview */}
             <section className="term-panel p-6 sm:p-8">
-              <h2 className="term-header">PROTOCOL OVERVIEW</h2>
+              <h2 className="term-header">CITIZENSHIP OVERVIEW</h2>
 
-              <span className="term-tag">PROTOCOL</span>
+              <span className="term-tag">NEOTERRA</span>
 
-              <h3 className="term-title">VOXX PASSIVE YIELD ENGINE</h3>
+              <h3 className="term-title">APPLY FOR NEOTERRA CITIZENSHIP</h3>
 
               <div className="term-text space-y-4">
-                <p>VOXX Soft Staking allows <strong>Genesis NFT</strong> holders to earn daily rewards without transferring custody.</p>
-                <p><strong>NFTs remain safely inside your wallet</strong> while reward eligibility is tracked on-chain through staking snapshots.</p>
+                <p>Welcome to the <strong>Neoterra Citizenship Registry</strong>. Genesis NFT holders are eligible to apply for citizenship in the Neoterra sovereign network.</p>
+                <p><strong>Your NFT serves as your identity credential.</strong> It never leaves your wallet — the registry simply verifies on-chain ownership and tracks your citizenship standing.</p>
+                <p>The longer you hold and the more NFTs you possess, the greater your standing in Neoterra society.</p>
               </div>
 
               <div className="wallet-inline" style={{ marginTop: 24 }}>
@@ -96,9 +97,9 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
                     data-testid="sign-in-button"
                   >
                     {isAuthenticating ? (
-                      <>SIGNING IN...</>
+                      <>VERIFYING...</>
                     ) : (
-                      <><Lightning size={16} weight="fill" className="inline mr-2" />SIGN IN</>
+                      <><Fingerprint size={16} weight="fill" className="inline mr-2" />VERIFY IDENTITY</>
                     )}
                   </button>
                 ) : (
@@ -117,9 +118,9 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
               </div>
             </section>
 
-            {/* RIGHT: Staking Flow */}
+            {/* RIGHT: Application Process */}
             <section className="term-panel p-6 sm:p-8">
-              <h2 className="term-header">STAKING FLOW</h2>
+              <h2 className="term-header">APPLICATION PROCESS</h2>
 
               <div className="flow-step">
                 <div className="flow-line">
@@ -129,7 +130,7 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
                 <div className="flow-icon"><Wallet size={22} weight="light" /></div>
                 <div className="flow-content">
                   <div className="flow-title">Connect Wallet</div>
-                  <div className="flow-desc">Connect your wallet to VOXX Terminal.</div>
+                  <div className="flow-desc">Link your SUI wallet to the Citizenship Registry.</div>
                 </div>
               </div>
 
@@ -138,10 +139,10 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
                   <div className="flow-dot" />
                   <div className="flow-connector" />
                 </div>
-                <div className="flow-icon"><ShieldCheck size={22} /></div>
+                <div className="flow-icon"><Fingerprint size={22} /></div>
                 <div className="flow-content">
-                  <div className="flow-title">Verify NFT</div>
-                  <div className="flow-desc">System verifies your Genesis NFT ownership.</div>
+                  <div className="flow-title">Verify Identity</div>
+                  <div className="flow-desc">Sign a message to prove ownership of your wallet.</div>
                 </div>
               </div>
 
@@ -150,10 +151,10 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
                   <div className="flow-dot" />
                   <div className="flow-connector" />
                 </div>
-                <div className="flow-icon"><Power size={22} weight="fill" /></div>
+                <div className="flow-icon"><ShieldCheck size={22} weight="fill" /></div>
                 <div className="flow-content">
-                  <div className="flow-title">Activate Staking</div>
-                  <div className="flow-desc">Activate soft staking. No NFT transfer needed.</div>
+                  <div className="flow-title">Credential Scan</div>
+                  <div className="flow-desc">Registry scans your wallet for Genesis NFT credentials.</div>
                 </div>
               </div>
 
@@ -162,10 +163,10 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
                   <div className="flow-dot" />
                   <div className="flow-connector" />
                 </div>
-                <div className="flow-icon"><Wallet size={22} weight="duotone" /></div>
+                <div className="flow-icon"><IdentificationBadge size={22} weight="fill" /></div>
                 <div className="flow-content">
-                  <div className="flow-title">NFT Remains In Wallet</div>
-                  <div className="flow-desc">Your NFT stays safely in your wallet.</div>
+                  <div className="flow-title">Registration Active</div>
+                  <div className="flow-desc">Citizenship registration begins. Your NFT stays in your wallet.</div>
                 </div>
               </div>
 
@@ -174,10 +175,10 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
                   <div className="flow-dot" />
                   <div className="flow-connector" />
                 </div>
-                <div className="flow-icon"><Database size={22} /></div>
+                <div className="flow-icon"><Clock size={22} /></div>
                 <div className="flow-content">
-                  <div className="flow-title">Accrue Daily Rewards</div>
-                  <div className="flow-desc">Rewards accrue automatically every day.</div>
+                  <div className="flow-title">Accrue Standing</div>
+                  <div className="flow-desc">Citizenship credits accumulate automatically over time.</div>
                 </div>
               </div>
 
@@ -185,16 +186,16 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
                 <div className="flow-line">
                   <div className="flow-dot" />
                 </div>
-                <div className="flow-icon"><Gift size={22} weight="fill" /></div>
+                <div className="flow-icon"><Scales size={22} weight="fill" /></div>
                 <div className="flow-content">
-                  <div className="flow-title">Claim Anytime</div>
-                  <div className="flow-desc">Claim rewards anytime you choose.</div>
+                  <div className="flow-title">Claim Benefits</div>
+                  <div className="flow-desc">Access Neoterra citizen benefits based on your standing.</div>
                 </div>
               </div>
             </section>
           </div>
 
-          {/* NOTICE — always visible on landing page */}
+          {/* NOTICE */}
           <section className="notice-box p-6 sm:p-8">
             <div className="flex flex-col sm:flex-row gap-4">
               <div className="notice-icon-wrap">
@@ -202,11 +203,11 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
                 <span className="notice-label">NOTICE</span>
               </div>
               <ul className="notice-list">
-                <li>NFT stays in your wallet</li>
-                <li>Rewards update automatically</li>
-                <li>Selling NFT immediately stops future rewards</li>
-                <li>No custody transfer required</li>
-                <li>Previously earned rewards remain claimable</li>
+                <li>Your NFT never leaves your wallet</li>
+                <li>Citizenship credits update automatically</li>
+                <li>Selling your NFT revokes citizenship standing</li>
+                <li>No custody transfer — full self-sovereignty</li>
+                <li>Previously earned credits are preserved</li>
               </ul>
             </div>
           </section>
@@ -217,7 +218,7 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
           {/* Status bar with logout */}
           <div className="term-panel p-4 mb-5" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
             <div className="mono text-xs" style={{ color: '#00FF88' }}>
-              {syncing ? <>SYNCING<span className="ml-1" style={{ animation: 'pulse-dot 1s infinite', display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#00FF88', verticalAlign: 'middle' }} /> </> : 'LIVE'} &nbsp;|&nbsp; SUI MAINNET
+              {syncing ? <>SYNCING<span className="ml-1" style={{ animation: 'pulse-dot 1s infinite', display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#00FF88', verticalAlign: 'middle' }} /> </> : 'LIVE'} &nbsp;|&nbsp; NEOTERRA REGISTRY
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
               <span className="mono text-xs" style={{ color: 'rgba(0,255,204,0.7)' }}>
@@ -234,33 +235,33 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
             </div>
           </div>
 
-          {/* LIVE STAKING STATUS — only when connected */}
+          {/* CITIZENSHIP STATUS — only when connected */}
           <section className="term-panel p-6 sm:p-8" style={{ marginBottom: 20 }}>
-            <h2 className="term-header">LIVE STAKING STATUS</h2>
+            <h2 className="term-header">CITIZENSHIP STATUS</h2>
             <table className="status-table">
               <tbody>
                 <tr>
                   <td style={{ width: '33%' }}><span className="status-label">Status</span></td>
-                  <td><span className="status-value status-value-green"><span className="status-dot-active"><span className="status-dot" />ACTIVE</span></span></td>
+                  <td><span className="status-value status-value-green"><span className="status-dot-active"><span className="status-dot" />REGISTERED</span></span></td>
                 </tr>
                 <tr>
-                  <td><span className="status-label">NFTs Held</span></td>
+                  <td><span className="status-label">Credentials Held</span></td>
                   <td><span className="status-value">{totalNfts}</span></td>
                 </tr>
                 <tr>
-                  <td><span className="status-label">Multiplier</span></td>
+                  <td><span className="status-label">Standing Bonus</span></td>
                   <td><span className="status-value">{multiplier.toFixed(1)}x</span></td>
                 </tr>
                 <tr>
-                  <td><span className="status-label">Reward Rate</span></td>
-                  <td><span className="status-value">{pointsPerHour} PTS / HR</span></td>
+                  <td><span className="status-label">Accrual Rate</span></td>
+                  <td><span className="status-value">{pointsPerHour} CREDITS / HR</span></td>
                 </tr>
                 <tr>
-                  <td><span className="status-label">Total Points</span></td>
-                  <td><span className="status-value">{totalPoints} PTS</span></td>
+                  <td><span className="status-label">Total Credits</span></td>
+                  <td><span className="status-value">{totalPoints} CREDITS</span></td>
                 </tr>
                 <tr>
-                  <td><span className="status-label">Staking Duration</span></td>
+                  <td><span className="status-label">Registration Period</span></td>
                   <td><span className="status-value">{maxDuration > 0 ? `${maxDuration.toFixed(1)} days` : '—'}</span></td>
                 </tr>
               </tbody>
@@ -273,10 +274,10 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
           {/* Tab Navigation */}
           <div className="tab-nav" data-testid="tab-navigation">
             <button onClick={() => setActiveTab('nfts')} className={`tab-btn ${activeTab === 'nfts' ? 'active' : ''}`} data-testid="tab-nfts">
-              <Cube size={12} weight="bold" className="inline mr-2" />MY NFTS
+              <Cube size={12} weight="bold" className="inline mr-2" />CREDENTIALS
             </button>
             <button onClick={() => setActiveTab('dashboard')} className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`} data-testid="tab-dashboard">
-              <Stack size={12} weight="bold" className="inline mr-2" />DASHBOARD
+              <Stack size={12} weight="bold" className="inline mr-2" />STANDING
             </button>
           </div>
 
@@ -307,15 +308,15 @@ function App() {
 
   return (
     <div className="App">
-      {/* Minimal Nav Bar */}
+      {/* Nav Bar */}
       <nav className="nav-bar app-container" data-testid="navigation-bar">
         <button onClick={() => navigate('/')} className="nav-brand" data-testid="logo-home-button">
           <div className="nav-logo-box">
             <Cpu size={18} weight="bold" />
           </div>
           <div className="nav-text">
-            <h3>VOXXSTAKE</h3>
-            <p>// SOFT-STAKE PROTOCOL</p>
+            <h3>NEOTERRA</h3>
+            <p>// CITIZENSHIP REGISTRY</p>
           </div>
         </button>
         <span className="nav-status hidden md:block flicker">[ ONLINE ]</span>
@@ -343,9 +344,9 @@ function App() {
               <div className="app-container mt-4">
                 <div className="term-panel p-10 text-center">
                   <p className="hud-label mb-2">ACCESS DENIED</p>
-                  <p className="text-sm text-dim mb-4">Sign in to view NFT details.</p>
+                  <p className="text-sm text-dim mb-4">Verify your identity to view credential details.</p>
                   <button onClick={() => navigate('/')} className="btn-primary px-4 py-2">
-                    RETURN TO HOME
+                    RETURN TO REGISTRY
                   </button>
                 </div>
               </div>
@@ -356,7 +357,7 @@ function App() {
 
       {/* Footer */}
       <footer className="app-footer app-container">
-        <p>// VOXX INC. // SOFT-STAKE PROTOCOL v1.0 // POWERED BY SUI //</p>
+        <p>// NEOTERRA SOVEREIGN NETWORK // CITIZENSHIP REGISTRY v1.0 // POWERED BY SUI //</p>
       </footer>
     </div>
   );
