@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import './App.css';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { useWallet } from '@suiet/wallet-kit';
+import { ConnectButton } from '@suiet/wallet-kit';
 import { useWalletAuth } from './hooks/useWalletAuth';
 import { useStaking } from './hooks/useStaking';
-import { WalletConnectPanel } from './components/WalletConnectPanel';
 import { StatsCards } from './components/StatsCards';
 import { NFTList } from './components/NFTList';
 import { StakingDashboard } from './components/StakingDashboard';
@@ -13,40 +13,38 @@ import { NFTDetail } from './components/NFTDetail';
 import {
   Cube, Stack, Gear, Cpu,
   Wallet, ShieldCheck, Power, Database, Gift,
-  Warning, CaretDown
+  Warning, SignOut, Lightning
 } from '@phosphor-icons/react';
 
 /* ============================================================
-   LANDING PAGE — Terminal-style layout matching design reference
+   LANDING PAGE — Terminal-style layout
    ============================================================ */
 function HomePage({ authToken, login, isAuthenticating, authError, logout, loadToken }) {
   const wallet = useWallet();
   const { positions, stats, sellAlerts, loading, syncing } = useStaking(authToken);
   const [activeTab, setActiveTab] = useState('nfts');
 
-  // On mount: restore token immediately from localStorage.
-  // When wallet connects later, loadToken ensures consistency.
   useEffect(() => {
     loadToken();
   }, []); // eslint-disable-line
 
   useEffect(() => {
     if (wallet.connected) loadToken();
-    // IMPORTANT: do NOT call logout() when wallet disconnects.
-    // The token persists across page closes — only explicit logout clears it.
   }, [wallet.connected]); // eslint-disable-line
 
-  /* ---- Derived data for status table ---- */
-  const activeCount = stats?.total_active || positions?.filter(p => p.status === 'active').length || 0;
+  /* ---- Derived data ---- */
   const totalNfts = stats?.nft_count || positions?.filter(p => p.status === 'active').length || 0;
   const totalPoints = (stats?.total_lore_points || 0).toFixed(0);
   const multiplier = stats?.holding_multiplier || 1.0;
   const pointsPerHour = (totalNfts * multiplier).toFixed(1);
-  // Find max duration among active stakes for "staking duration"
   const maxDuration = positions?.reduce((max, p) => {
     if (p.status === 'active' && (p.duration_days || 0) > max) return p.duration_days;
     return max;
   }, 0) || 0;
+
+  const handleLogout = () => {
+    logout();
+  };
 
   return (
     <div className="app-container">
@@ -61,7 +59,6 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
             </p>
           </div>
         </div>
-        {/* V Logo */}
         <div className="header-logo">
           <Cpu size={32} weight="bold" />
         </div>
@@ -74,9 +71,8 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
         </div>
       )}
 
-      {/* ===== MAIN GRID: Left + Right ===== */}
+      {/* ===== UNAUTHENTICATED: Landing page ===== */}
       {!authToken ? (
-        /* ---- Unauthenticated: Show landing page with connect ---- */
         <>
           <div className="main-grid" style={{ marginBottom: 20 }}>
             {/* LEFT: Protocol Overview */}
@@ -92,14 +88,33 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
                 <p><strong>NFTs remain safely inside your wallet</strong> while reward eligibility is tracked on-chain through staking snapshots.</p>
               </div>
 
-              {/* Connect wallet inline */}
-              <div className="wallet-inline">
-                <WalletConnectPanel
-                  onLoginSuccess={login}
-                  onLogout={logout}
-                  isAuthenticating={isAuthenticating}
-                  authToken={authToken}
-                />
+              <div className="wallet-inline" style={{ marginTop: 24 }}>
+                {wallet.connected ? (
+                  <button
+                    onClick={login}
+                    disabled={isAuthenticating}
+                    className="wallet-connect-btn"
+                    data-testid="sign-in-button"
+                  >
+                    {isAuthenticating ? (
+                      <>SIGNING IN...</>
+                    ) : (
+                      <><Lightning size={16} weight="fill" className="inline mr-2" />SIGN IN</>
+                    )}
+                  </button>
+                ) : (
+                  <ConnectButton className="wallet-connect-btn">
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      <Lightning size={16} weight="fill" />
+                      CONNECT WALLET
+                    </span>
+                  </ConnectButton>
+                )}
+                {wallet.connected && (
+                  <p className="mono text-xs mt-3" style={{ color: 'rgba(0,255,204,0.5)' }}>
+                    {wallet.account?.address?.slice(0, 8)}...{wallet.account?.address?.slice(-6)}
+                  </p>
+                )}
               </div>
             </section>
 
@@ -180,41 +195,7 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
             </section>
           </div>
 
-          {/* MIDDLE: Live Status (placeholder when not connected) */}
-          <section className="term-panel p-6 sm:p-8" style={{ marginBottom: 20 }}>
-            <h2 className="term-header">LIVE STAKING STATUS</h2>
-
-            <table className="status-table">
-              <tbody>
-                <tr>
-                  <td style={{ width: '33%' }}><span className="status-label">Status</span></td>
-                  <td><span className="status-value status-value-green"><span className="status-dot-active"><span className="status-dot" />ACTIVE</span></span></td>
-                </tr>
-                <tr>
-                  <td><span className="status-label">NFTs Held</span></td>
-                  <td><span className="status-value text-dim">{totalNfts || '—'}</span></td>
-                </tr>
-                <tr>
-                  <td><span className="status-label">Multiplier</span></td>
-                  <td><span className="status-value text-dim">{multiplier.toFixed(1)}x</span></td>
-                </tr>
-                <tr>
-                  <td><span className="status-label">Reward Rate</span></td>
-                  <td><span className="status-value text-dim">{pointsPerHour} PTS / HR</span></td>
-                </tr>
-                <tr>
-                  <td><span className="status-label">Total Points</span></td>
-                  <td><span className="status-value text-dim">{totalPoints || '—'} PTS</span></td>
-                </tr>
-                <tr>
-                  <td><span className="status-label">Staking Duration</span></td>
-                  <td><span className="status-value text-dim">{maxDuration > 0 ? `${maxDuration.toFixed(1)} days` : '—'}</span></td>
-                </tr>
-              </tbody>
-            </table>
-          </section>
-
-          {/* BOTTOM: Important Notes */}
+          {/* NOTICE — always visible on landing page */}
           <section className="notice-box p-6 sm:p-8">
             <div className="flex flex-col sm:flex-row gap-4">
               <div className="notice-icon-wrap">
@@ -232,21 +213,60 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
           </section>
         </>
       ) : (
-        /* ---- Authenticated: Show staking data with terminal theme ---- */
+        /* ===== AUTHENTICATED: Dashboard ===== */
         <>
-          {/* Mini header showing connected state */}
+          {/* Status bar with logout */}
           <div className="term-panel p-4 mb-5" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-            <div className="flex items-center gap-3">
-              <WalletConnectPanel
-                onLoginSuccess={login}
-                isAuthenticating={isAuthenticating}
-                authToken={authToken}
-              />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div className="mono text-xs" style={{ color: '#00FF88' }}>
+                {syncing ? <>SYNCING<span className="ml-1" style={{ animation: 'pulse-dot 1s infinite', display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#00FF88', verticalAlign: 'middle' }} /> </> : 'LIVE'} &nbsp;|&nbsp; SUI MAINNET
+              </div>
+              <span className="mono text-xs text-dim">
+                {wallet.account?.address?.slice(0, 8)}...{wallet.account?.address?.slice(-6)}
+              </span>
             </div>
-            <div className="mono text-xs" style={{ color: '#00FF88' }}>
-              {syncing ? <>SYNCING<span className="ml-1" style={{ animation: 'pulse-dot 1s infinite', display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#00FF88', verticalAlign: 'middle' }} /> </> : 'LIVE'} &nbsp;|&nbsp; SUI MAINNET
-            </div>
+            <button
+              onClick={handleLogout}
+              className="btn-ghost"
+              data-testid="logout-button"
+            >
+              <SignOut size={14} weight="bold" />
+              LOGOUT
+            </button>
           </div>
+
+          {/* LIVE STAKING STATUS — only when connected */}
+          <section className="term-panel p-6 sm:p-8" style={{ marginBottom: 20 }}>
+            <h2 className="term-header">LIVE STAKING STATUS</h2>
+            <table className="status-table">
+              <tbody>
+                <tr>
+                  <td style={{ width: '33%' }}><span className="status-label">Status</span></td>
+                  <td><span className="status-value status-value-green"><span className="status-dot-active"><span className="status-dot" />ACTIVE</span></span></td>
+                </tr>
+                <tr>
+                  <td><span className="status-label">NFTs Held</span></td>
+                  <td><span className="status-value">{totalNfts}</span></td>
+                </tr>
+                <tr>
+                  <td><span className="status-label">Multiplier</span></td>
+                  <td><span className="status-value">{multiplier.toFixed(1)}x</span></td>
+                </tr>
+                <tr>
+                  <td><span className="status-label">Reward Rate</span></td>
+                  <td><span className="status-value">{pointsPerHour} PTS / HR</span></td>
+                </tr>
+                <tr>
+                  <td><span className="status-label">Total Points</span></td>
+                  <td><span className="status-value">{totalPoints} PTS</span></td>
+                </tr>
+                <tr>
+                  <td><span className="status-label">Staking Duration</span></td>
+                  <td><span className="status-value">{maxDuration > 0 ? `${maxDuration.toFixed(1)} days` : '—'}</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
 
           {/* Stats Cards */}
           <StatsCards stats={stats} />
@@ -292,10 +312,8 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
    ROOT APP COMPONENT
    ============================================================ */
 function App() {
-  const wallet = useWallet();
   const { authToken, login, logout, isAuthenticating, authError, loadToken } = useWalletAuth();
   const navigate = useNavigate();
-  const location = useLocation();
 
   return (
     <div className="App">
