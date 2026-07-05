@@ -8,10 +8,9 @@ import { useStaking } from './hooks/useStaking';
 import { StatsCards } from './components/StatsCards';
 import { NFTList } from './components/NFTList';
 import { StakingDashboard } from './components/StakingDashboard';
-import { AdminPanel } from './components/AdminPanel';
 import { NFTDetail } from './components/NFTDetail';
 import {
-  Cube, Stack, Gear, Cpu,
+  Cube, Stack, Cpu,
   Wallet, ShieldCheck, Power, Database, Gift,
   Warning, SignOut, Lightning
 } from '@phosphor-icons/react';
@@ -217,22 +216,22 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
         <>
           {/* Status bar with logout */}
           <div className="term-panel p-4 mb-5" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div className="mono text-xs" style={{ color: '#00FF88' }}>
-                {syncing ? <>SYNCING<span className="ml-1" style={{ animation: 'pulse-dot 1s infinite', display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#00FF88', verticalAlign: 'middle' }} /> </> : 'LIVE'} &nbsp;|&nbsp; SUI MAINNET
-              </div>
-              <span className="mono text-xs text-dim">
-                {wallet.account?.address?.slice(0, 8)}...{wallet.account?.address?.slice(-6)}
-              </span>
+            <div className="mono text-xs" style={{ color: '#00FF88' }}>
+              {syncing ? <>SYNCING<span className="ml-1" style={{ animation: 'pulse-dot 1s infinite', display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#00FF88', verticalAlign: 'middle' }} /> </> : 'LIVE'} &nbsp;|&nbsp; SUI MAINNET
             </div>
-            <button
-              onClick={handleLogout}
-              className="btn-ghost"
-              data-testid="logout-button"
-            >
-              <SignOut size={14} weight="bold" />
-              LOGOUT
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <span className="mono text-xs" style={{ color: 'rgba(0,255,204,0.7)' }}>
+                {wallet.account?.address?.slice(0, 10)}...{wallet.account?.address?.slice(-6)}
+              </span>
+              <button
+                onClick={handleLogout}
+                className="btn-ghost"
+                data-testid="logout-button"
+              >
+                <SignOut size={14} weight="bold" />
+                LOGOUT
+              </button>
+            </div>
           </div>
 
           {/* LIVE STAKING STATUS — only when connected */}
@@ -279,9 +278,6 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
             <button onClick={() => setActiveTab('dashboard')} className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`} data-testid="tab-dashboard">
               <Stack size={12} weight="bold" className="inline mr-2" />DASHBOARD
             </button>
-            <button onClick={() => setActiveTab('admin')} className={`tab-btn ${activeTab === 'admin' ? 'active' : ''}`} data-testid="tab-admin">
-              <Gear size={12} weight="bold" className="inline mr-2" />ADMIN
-            </button>
           </div>
 
           {/* Tab Content */}
@@ -294,12 +290,6 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
           {activeTab === 'dashboard' && (
             <div data-testid="dashboard-tab-content" className="mt-6">
               <StakingDashboard positions={positions} sellAlerts={sellAlerts} />
-            </div>
-          )}
-
-          {activeTab === 'admin' && (
-            <div data-testid="admin-tab-content" className="mt-6">
-              <AdminPanel authToken={authToken} />
             </div>
           )}
         </>
