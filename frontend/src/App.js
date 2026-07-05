@@ -77,8 +77,8 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
                       )}
                     </button>
                     <ConnectButton>
-                      <button className="btn-ghost" data-testid="change-wallet-button">
-                        <ArrowsClockwise size={14} weight="bold" />
+                      <button className="wallet-connect-btn" data-testid="change-wallet-button">
+                        <ArrowsClockwise size={16} weight="bold" />
                         CHANGE WALLET
                       </button>
                     </ConnectButton>

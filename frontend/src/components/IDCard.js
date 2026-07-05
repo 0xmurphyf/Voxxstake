@@ -135,13 +135,13 @@ export function IDCard({ positions, stats, walletAddress, authToken }) {
     <div className="term-panel p-5 sm:p-6 mb-5" data-testid="id-card">
       <h2 className="term-header">TEMPORARY IDENTITY CARD</h2>
 
-      <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+      <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap', alignItems: 'flex-start' }}>
         {/* PFP Section */}
         <div style={{ flexShrink: 0 }}>
           <div
             style={{
-              width: 100, height: 100,
-              border: '2px solid rgba(0,255,204,0.4)',
+              width: 140, height: 140,
+              border: '2px solid rgba(0,255,204,0.45)',
               background: 'rgba(0,15,20,0.8)',
               overflow: 'hidden',
               position: 'relative',
@@ -158,7 +158,7 @@ export function IDCard({ positions, stats, walletAddress, authToken }) {
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 background: 'rgba(0,255,204,0.05)',
               }}>
-                <IdentificationBadge size={40} weight="light" style={{ color: 'rgba(0,255,204,0.3)' }} />
+                <IdentificationBadge size={56} weight="light" style={{ color: 'rgba(0,255,204,0.3)' }} />
               </div>
             )}
             {activePositions.length > 0 && (
@@ -179,7 +179,7 @@ export function IDCard({ positions, stats, walletAddress, authToken }) {
               </div>
             )}
           </div>
-          <p className="mono text-xs mt-2 text-center" style={{ color: 'rgba(0,255,204,0.4)' }}>PFP</p>
+          <p className="mono text-xs mt-2 text-center" style={{ color: 'rgba(0,255,204,0.4)', fontSize: '0.7rem' }}>PFP</p>
         </div>
 
         {/* ID Details */}
@@ -217,7 +217,7 @@ export function IDCard({ positions, stats, walletAddress, authToken }) {
               </div>
             ) : (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span className="mono text-sm" style={{ color: displayName ? '#fff' : 'rgba(0,255,204,0.35)', letterSpacing: '0.1em', fontWeight: displayName ? 600 : 400 }}>
+                <span className="mono" style={{ color: displayName ? '#fff' : 'rgba(0,255,204,0.35)', letterSpacing: '0.1em', fontWeight: displayName ? 600 : 400, fontSize: '1.05rem' }}>
                   {displayName || 'ANONYMOUS APPLICANT'}
                 </span>
                 <button
