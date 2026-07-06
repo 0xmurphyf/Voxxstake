@@ -1,11 +1,13 @@
 /**
- * Bulk download script: fetches and caches all NFT images from MongoDB stakes.
+ * Bulk download script: fetches and caches all NFT images from MongoDB stakes
+ * AND from on-chain wallet scans of all registered users.
  *
- * Usage: npx tsx src/scripts/download-images.ts
+ * Usage: npx tsx src/scripts/download-images.ts [--watch]
  *
- * Reads all unique object_ids from the Stake collection, downloads each
- * image via the same proxy logic used by /api/image/:objectId, and stores
- * them in backend/cache/images/.
+ * Without --watch: one-shot download of all known NFTs (DB + chain scan).
+ * With --watch: keeps running, re-scans every 30 minutes for new NFTs.
+ *
+ * Images are stored in backend/cache/images/ with immutable Cache-Control.
  */
 
 import mongoose from 'mongoose';
@@ -14,7 +16,8 @@ import path from 'path';
 import crypto from 'crypto';
 import { config } from '../config';
 import { Stake } from '../models/Stake';
-import { getNftMetadata, extractImageUrl } from '../services/sui';
+import { getNftMetadata, extractImageUrl, getOwnedObjects } from '../services/sui';
+import { VOXX_TYPE } from '../types';
 
 const CACHE_DIR = path.resolve(__dirname, '../../cache/images');
 if (!fs.existsSync(CACHE_DIR)) {
@@ -37,15 +40,12 @@ async function downloadImage(objectId: string): Promise<DownloadResult> {
   // Skip if already cached on disk
   const existing = fs.readdirSync(CACHE_DIR).filter(f => f.startsWith(hash));
   if (existing.length > 0) {
-    console.log(`  [CACHED] ${objectId.slice(-8)}`);
     return 'cached';
   }
 
   try {
     // Fetch metadata from chain
     const metadata = await getNftMetadata(objectId);
-    // getNftMetadata already extracts image_url to the top level.
-    // Try that first, then fall back to raw content fields.
     let imageUrl = metadata.image_url as string | null | undefined;
     if (!imageUrl) {
       imageUrl = extractImageUrl(metadata.raw_content as Record<string, unknown>);
@@ -83,38 +83,130 @@ async function downloadImage(objectId: string): Promise<DownloadResult> {
   }
 }
 
-async function main() {
-  console.log('Connecting to MongoDB...');
-  await mongoose.connect(config.mongoUrl, { dbName: config.dbName });
-  console.log('Connected.');
+/**
+ * Scan all registered addresses' wallets on-chain to discover NFT object IDs.
+ * This finds NFTs that haven't been synced to the Stake collection yet.
+ */
+async function discoverNftIdsFromChain(): Promise<string[]> {
+  const addresses = await Stake.distinct('address');
+  console.log(`Scanning ${addresses.length} registered addresses for VOXX NFTs...`);
 
-  // Get all unique object_ids from stakes
-  const ids = await Stake.distinct('object_id');
-  console.log(`Found ${ids.length} unique NFT images to download.\n`);
+  const allIds = new Set<string>();
+  let scanned = 0;
 
+  for (const address of addresses) {
+    try {
+      const { objects } = await getOwnedObjects(address, VOXX_TYPE, true);
+      for (const nft of objects) {
+        const data = (nft as Record<string, unknown>).data as Record<string, unknown>;
+        const objId = data?.objectId as string;
+        if (objId) allIds.add(objId);
+      }
+      scanned++;
+      if (scanned % 10 === 0) {
+        console.log(`  Scanned ${scanned}/${addresses.length} addresses, ${allIds.size} NFTs found so far`);
+      }
+    } catch (err) {
+      console.log(`  [WARN] Failed to scan ${address.slice(0, 10)}... — ${err instanceof Error ? err.message : String(err)}`);
+    }
+    // Delay between addresses to avoid RPC rate limiting
+    await new Promise(r => setTimeout(r, 300));
+  }
+
+  console.log(`Chain scan complete: ${allIds.size} unique NFTs from ${scanned} addresses`);
+  return Array.from(allIds);
+}
+
+async function runDownloadPass(ids: string[]): Promise<{ success: number; skipped: number; failed: number }> {
   let success = 0;
   let skipped = 0;
   let failed = 0;
 
   for (let i = 0; i < ids.length; i++) {
     const pct = ((i / ids.length) * 100).toFixed(0);
-    console.log(`[${i + 1}/${ids.length} ${pct}%] ${ids[i]}`);
     const result = await downloadImage(ids[i]);
     if (result === 'downloaded') success++;
     else if (result === 'cached') skipped++;
     else failed++;
+
+    // Progress update every 10 items or at end
+    if ((i + 1) % 10 === 0 || i === ids.length - 1) {
+      console.log(`[${i + 1}/${ids.length} ${pct}%] OK:${success} CACHED:${skipped} FAIL:${failed}`);
+    }
+
     // Small delay to avoid rate-limiting RPC/IPFS
     await new Promise(r => setTimeout(r, 200));
   }
 
-  console.log(`\n=== DONE ===`);
-  console.log(`Downloaded: ${success}`);
-  console.log(`Skipped (cached): ${skipped}`);
-  console.log(`Failed: ${failed}`);
-  console.log(`Total: ${ids.length}`);
+  return { success, skipped, failed };
+}
 
-  await mongoose.disconnect();
-  process.exit(0);
+async function main() {
+  const watchMode = process.argv.includes('--watch');
+
+  console.log('Connecting to MongoDB...');
+  await mongoose.connect(config.mongoUrl, { dbName: config.dbName });
+  console.log('Connected.');
+
+  // Phase 1: Download all NFTs already in the Stake collection
+  const dbIds = await Stake.distinct('object_id');
+  console.log(`\n=== Phase 1: DB stake records (${dbIds.length} NFTs) ===`);
+  const dbResult = await runDownloadPass(dbIds);
+
+  // Phase 2: Scan all registered wallets on-chain for additional NFTs
+  console.log(`\n=== Phase 2: On-chain wallet scan ===`);
+  const chainIds = await discoverNftIdsFromChain();
+
+  // Filter out IDs we already processed from DB
+  const dbIdSet = new Set(dbIds);
+  const newIds = chainIds.filter(id => !dbIdSet.has(id));
+
+  if (newIds.length > 0) {
+    console.log(`\n=== Phase 3: New NFTs from chain (${newIds.length} not in DB) ===`);
+    const chainResult = await runDownloadPass(newIds);
+
+    const totalSuccess = dbResult.success + chainResult.success;
+    const totalSkipped = dbResult.skipped + chainResult.skipped;
+    const totalFailed = dbResult.failed + chainResult.failed;
+    const grandTotal = dbIds.length + newIds.length;
+
+    console.log(`\n=== DONE ===`);
+    console.log(`DB records:      ${dbIds.length} (OK:${dbResult.success} CACHED:${dbResult.skipped} FAIL:${dbResult.failed})`);
+    console.log(`Chain discovered: ${newIds.length} (OK:${chainResult.success} CACHED:${chainResult.skipped} FAIL:${chainResult.failed})`);
+    console.log(`Total processed:  ${grandTotal}`);
+    console.log(`Total downloaded: ${totalSuccess}`);
+    console.log(`Total cached:     ${totalSkipped}`);
+    console.log(`Total failed:     ${totalFailed}`);
+  } else {
+    console.log(`\n=== DONE ===`);
+    console.log(`Total processed:  ${dbIds.length}`);
+    console.log(`Downloaded: ${dbResult.success}`);
+    console.log(`Cached:     ${dbResult.skipped}`);
+    console.log(`Failed:     ${dbResult.failed}`);
+  }
+
+  if (watchMode) {
+    const INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
+    const intervalMin = INTERVAL_MS / 60000;
+    console.log(`\n[WATCH] Running every ${intervalMin} minutes. Press Ctrl+C to stop.`);
+
+    // Also re-run Phase 2 on each cycle to catch new addresses
+    const runCycle = async () => {
+      console.log(`\n=== Watch cycle at ${new Date().toISOString()} ===`);
+      try {
+        const ids = await discoverNftIdsFromChain();
+        console.log(`Found ${ids.length} NFTs on chain`);
+        await runDownloadPass(ids);
+      } catch (err) {
+        console.error('Watch cycle error:', err);
+      }
+    };
+
+    setInterval(runCycle, INTERVAL_MS);
+  } else {
+    await mongoose.disconnect();
+    process.exit(0);
+  }
 }
 
 main().catch(err => {
