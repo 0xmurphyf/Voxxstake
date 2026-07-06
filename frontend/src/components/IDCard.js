@@ -244,48 +244,48 @@ export function IDCard({ positions, stats, walletAddress, authToken, balance }) 
             {tempId}
           </p>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 24px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 24px' }}>
             <div>
-              <span className="hud-label" style={{ fontSize: '0.62rem' }}>STATUS</span>
-              <p className="mono text-xs" style={{ color: '#00FF88' }}>
+              <span className="hud-label" style={{ fontSize: '0.68rem' }}>STATUS</span>
+              <p className="mono" style={{ color: '#00FF88', fontSize: '0.95rem' }}>
                 <span className="status-dot" style={{ display: 'inline-block', marginRight: 6 }} />
                 REGISTERED
               </p>
             </div>
             <div>
-              <span className="hud-label" style={{ fontSize: '0.62rem' }}>CREDENTIALS</span>
-              <p className="mono text-xs" style={{ color: '#fff' }}>{totalNfts}</p>
+              <span className="hud-label" style={{ fontSize: '0.68rem' }}>CREDENTIALS</span>
+              <p className="mono" style={{ color: '#fff', fontSize: '0.95rem' }}>{totalNfts}</p>
             </div>
             <div>
-              <span className="hud-label" style={{ fontSize: '0.62rem' }}>STANDING</span>
-              <p className="mono text-xs" style={{ color: '#00FFCC' }}>{multiplier.toFixed(1)}x</p>
+              <span className="hud-label" style={{ fontSize: '0.68rem' }}>STANDING</span>
+              <p className="mono" style={{ color: '#00FFCC', fontSize: '0.95rem' }}>{multiplier.toFixed(3)}x</p>
             </div>
             <div>
-              <span className="hud-label" style={{ fontSize: '0.62rem' }}>ACCRUAL</span>
-              <p className="mono text-xs" style={{ color: '#fff' }}>{creditsPerHour} CR/HR</p>
+              <span className="hud-label" style={{ fontSize: '0.68rem' }}>ACCRUAL</span>
+              <p className="mono" style={{ color: '#fff', fontSize: '0.95rem' }}>{creditsPerHour} CR/HR</p>
             </div>
             <div>
-              <span className="hud-label" style={{ fontSize: '0.62rem' }}>CREDITS</span>
-              <p className="mono text-xs" style={{ color: '#00FF88', fontWeight: 600 }}>{totalCredits}</p>
+              <span className="hud-label" style={{ fontSize: '0.68rem' }}>CREDITS</span>
+              <p className="mono" style={{ color: '#00FF88', fontWeight: 600, fontSize: '0.95rem' }}>{totalCredits}</p>
             </div>
             <div>
-              <span className="hud-label" style={{ fontSize: '0.62rem' }}>REGISTERED</span>
-              <p className="mono text-xs" style={{ color: 'rgba(0,255,204,0.7)' }}>
+              <span className="hud-label" style={{ fontSize: '0.68rem' }}>REGISTERED</span>
+              <p className="mono" style={{ color: 'rgba(0,255,204,0.7)', fontSize: '0.95rem' }}>
                 {maxDuration > 0 ? formatDuration(maxDuration) : '—'}
               </p>
             </div>
           </div>
 
-          <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid rgba(0,255,204,0.1)', display: 'flex', gap: 32 }}>
+          <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid rgba(0,255,204,0.1)', display: 'flex', gap: 32 }}>
             <div>
-              <span className="hud-label" style={{ fontSize: '0.62rem' }}>BALANCE</span>
-              <p className="mono text-xs" style={{ color: '#00FF88', fontWeight: 600 }}>
+              <span className="hud-label" style={{ fontSize: '0.68rem' }}>BALANCE</span>
+              <p className="mono" style={{ color: '#00FF88', fontWeight: 600, fontSize: '0.95rem' }}>
                 {balance !== null ? `${balance} SUI` : '...'}
               </p>
             </div>
             <div>
-              <span className="hud-label" style={{ fontSize: '0.62rem' }}>WALLET</span>
-              <p className="mono text-xs" style={{ color: 'rgba(0,255,204,0.5)' }}>
+              <span className="hud-label" style={{ fontSize: '0.68rem' }}>WALLET</span>
+              <p className="mono" style={{ color: 'rgba(0,255,204,0.5)', fontSize: '0.95rem' }}>
                 {walletAddress ? `${walletAddress.slice(0, 14)}...${walletAddress.slice(-6)}` : '—'}
               </p>
             </div>

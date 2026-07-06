@@ -154,7 +154,7 @@ export function WaitingList({ authToken }) {
                 {/* Multiplier */}
                 <div className="flex items-center justify-center">
                   <span className="status-badge badge-active" style={{ fontSize: '0.6rem', padding: '2px 8px' }}>
-                    {entry.multiplier.toFixed(1)}x
+                    {entry.multiplier.toFixed(3)}x
                   </span>
                 </div>
 
