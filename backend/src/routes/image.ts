@@ -86,9 +86,9 @@ router.get('/:objectId', async (req: Request, res: Response) => {
     fs.writeFileSync(filePath, buffer);
     filenameCache.set(objectId, filename);
 
-    // 7. Serve
+    // 7. Serve — cache forever (images are immutable by objectId)
     res.set('Content-Type', contentType);
-    res.set('Cache-Control', 'public, max-age=86400');
+    res.set('Cache-Control', 'public, max-age=31536000, immutable');
     res.send(buffer);
   } catch (err) {
     console.error('Image proxy error:', err);
@@ -102,7 +102,7 @@ function sendFile(res: Response, filePath: string) {
   const ext = path.extname(filePath).toLowerCase();
   const contentType = extToMime(ext);
   res.set('Content-Type', contentType);
-  res.set('Cache-Control', 'public, max-age=86400');
+  res.set('Cache-Control', 'public, max-age=31536000, immutable');
   res.sendFile(filePath);
 }
 
