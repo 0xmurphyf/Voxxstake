@@ -480,9 +480,10 @@
 
         /* Signal loss flicker — sits under the NODE badge, top-right */
         .signal-flicker {
-            position: fixed; top: 78px; right: 28px; z-index: 500;
+            text-align: right; padding: 2px 28px 0 0;
             font-size: 0.6rem; letter-spacing: 1.5px; color: var(--c-red); white-space: nowrap;
             text-shadow: 0 0 6px var(--c-red); opacity: 0; pointer-events: none; transition: opacity 0.2s;
+            height: 0; overflow: visible;
         }
         .signal-flicker.show { opacity: 1; }
 
