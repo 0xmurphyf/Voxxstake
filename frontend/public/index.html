@@ -1334,8 +1334,8 @@
             const track = document.querySelector('.psa-ticker-track');
             if (!track) return;
             const loopMs = prefersReducedMotion ? 60000 : 26000;
-            SFX.psaAlert();
-            setInterval(() => SFX.psaAlert(), loopMs);
+            // PSA sound disabled — only visual ticker
+            // setInterval(() => SFX.psaAlert(), loopMs);
         }
 
         // ===== Automatic decoration of archive entries: FILE number / CLEARANCE / LAST UPDATED =====
@@ -1471,16 +1471,29 @@
                 btn.addEventListener('click', () => SFX.click());
             });
 
-            // ===== Phase: Boot Sequence =====
-            await runBootSequence();
+            // ===== First visit: skip boot sequence, show FILE_01 directly =====
+            // Boot sequence only plays on first visit (stored in sessionStorage).
+            // FILE_01 (Chronology) is the default landing screen — no PSA animation.
+            const hasVisited = sessionStorage.getItem('voxx_visited');
 
-            // ===== Phase: initial screen load =====
-            SFX.boot();
+            if (!hasVisited) {
+                sessionStorage.setItem('voxx_visited', '1');
+                // Skip boot sequence entirely — hide it
+                const bootEl = document.getElementById('boot-sequence');
+                if (bootEl) bootEl.style.display = 'none';
 
-            await new Promise(r => setTimeout(r, 500));
-
-            const initialPath = document.querySelector('.voxx-sidebar a.active').getAttribute('data-path');
-            await typePathAndShowScreen(initialPath, 'screen-directive');
+                // Directly activate FILE_01 screen without typewriter PSA
+                document.getElementById('screen-chronology').classList.add('active');
+                const pathTextEl = document.getElementById('path-text');
+                pathTextEl.textContent = 'FILE_01_CHRONOLOGY';
+            } else {
+                // Returning visitor or tab switch: play PSA animation
+                await runBootSequence();
+                SFX.boot();
+                await new Promise(r => setTimeout(r, 500));
+                const initialPath = document.querySelector('.voxx-sidebar a.active').getAttribute('data-path');
+                await typePathAndShowScreen(initialPath, 'screen-directive');
+            }
         });
 
         // Root Terminal also supports Esc to close + basic focus trap
