@@ -75,6 +75,12 @@ export function IDCard({ positions, stats, walletAddress, authToken, balance }) 
     }
   }, [authToken]);
 
+  // PFP selector pagination
+  const [pfpPage, setPfpPage] = useState(0);
+  const PFP_PAGE_SIZE = 48;
+  const pfpTotalPages = Math.ceil(activePositions.length / PFP_PAGE_SIZE);
+  const pfpSlice = activePositions.slice(pfpPage * PFP_PAGE_SIZE, (pfpPage + 1) * PFP_PAGE_SIZE);
+
   // Verify PFP is still held on-chain
   const verifyPfp = useCallback(async (objectId) => {
     if (!authToken || !objectId) return false;
@@ -147,7 +153,12 @@ export function IDCard({ positions, stats, walletAddress, authToken, balance }) 
               position: 'relative',
               cursor: activePositions.length > 0 ? 'pointer' : 'default',
             }}
-            onClick={() => activePositions.length > 0 && setSelectingPfp(!selectingPfp)}
+            onClick={() => {
+              if (activePositions.length > 0) {
+                setPfpPage(0);
+                setSelectingPfp(!selectingPfp);
+              }
+            }}
             title={activePositions.length > 0 ? 'Click to change PFP' : 'No credentials to use as PFP'}
           >
             {pfpUrl && pfpValid ? (
@@ -296,9 +307,32 @@ export function IDCard({ positions, stats, walletAddress, authToken, balance }) 
       {/* PFP Selector */}
       {selectingPfp && activePositions.length > 0 && (
         <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid rgba(0,255,204,0.12)' }}>
-          <p className="hud-label mb-3" style={{ fontSize: '0.62rem' }}>SELECT PROFILE PICTURE</p>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            {activePositions.slice(0, 12).map((pos) => {
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+            <p className="hud-label" style={{ fontSize: '0.62rem', margin: 0 }}>SELECT PROFILE PICTURE ({activePositions.length} credentials)</p>
+            {pfpTotalPages > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <button
+                  onClick={() => setPfpPage(p => Math.max(0, p - 1))}
+                  disabled={pfpPage === 0}
+                  style={{
+                    background: 'rgba(0,255,204,0.05)', border: '1px solid rgba(0,255,204,0.3)', color: pfpPage === 0 ? 'rgba(0,255,204,0.2)' : '#00FFCC',
+                    fontFamily: 'Share Tech Mono, monospace', fontSize: '0.65rem', padding: '2px 8px', cursor: pfpPage === 0 ? 'default' : 'pointer',
+                  }}
+                >◀ PREV</button>
+                <span className="mono" style={{ fontSize: '0.65rem', color: 'rgba(0,255,204,0.5)' }}>{pfpPage + 1}/{pfpTotalPages}</span>
+                <button
+                  onClick={() => setPfpPage(p => Math.min(pfpTotalPages - 1, p + 1))}
+                  disabled={pfpPage >= pfpTotalPages - 1}
+                  style={{
+                    background: 'rgba(0,255,204,0.05)', border: '1px solid rgba(0,255,204,0.3)', color: pfpPage >= pfpTotalPages - 1 ? 'rgba(0,255,204,0.2)' : '#00FFCC',
+                    fontFamily: 'Share Tech Mono, monospace', fontSize: '0.65rem', padding: '2px 8px', cursor: pfpPage >= pfpTotalPages - 1 ? 'default' : 'pointer',
+                  }}
+                >NEXT ▶</button>
+              </div>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', maxHeight: 320, overflowY: 'auto', padding: '2px 0' }}>
+            {pfpSlice.map((pos) => {
               const imgSrc = pos.image_url || VOXX_PLACEHOLDER;
               const isSelected = pfpUrl === imgSrc;
               return (
@@ -306,13 +340,13 @@ export function IDCard({ positions, stats, walletAddress, authToken, balance }) 
                   key={pos.object_id}
                   onClick={() => selectPfp(pos)}
                   style={{
-                    width: 56, height: 56,
-                    border: isSelected ? '2px solid #00FFCC' : '1px solid rgba(0,255,204,0.25)',
+                    width: 52, height: 52,
+                    border: isSelected ? '2px solid #00FFCC' : '1px solid rgba(0,255,204,0.2)',
                     cursor: 'pointer',
                     overflow: 'hidden',
                     background: 'rgba(0,15,20,0.8)',
                     flexShrink: 0,
-                    transition: 'all 0.2s',
+                    transition: 'all 0.15s',
                     boxShadow: isSelected ? '0 0 10px rgba(0,255,204,0.3)' : 'none',
                   }}
                   title={pos.name || `VOXX #${pos.object_id.slice(-6)}`}
