@@ -115,7 +115,7 @@ export function WaitingList({ authToken, walletAddress, profileVersion }) {
           <span className="hud-label text-right" style={{ fontSize: '0.58rem' }}>CREDITS</span>
         </div>
 
-        <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+        <div style={{ overflowY: 'auto' }}>
           {rankings.map((entry, idx) => {
             const rank = idx + 1;
             const isTop3 = rank <= 3;

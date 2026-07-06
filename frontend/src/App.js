@@ -28,6 +28,14 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
   const { positions, stats, sellAlerts, loading, syncing } = useStaking(authToken);
   const [activeTab, setActiveTab] = useState('nfts');
   const [profileVersion, setProfileVersion] = useState(0);
+  const [tabsEnabled, setTabsEnabled] = useState(false);
+
+  // Enable tab switching after 3 seconds
+  useEffect(() => {
+    if (!authToken) return;
+    const timer = setTimeout(() => setTabsEnabled(true), 3000);
+    return () => clearTimeout(timer);
+  }, [authToken]);
 
   // New user name prompt
   const [showNamePrompt, setShowNamePrompt] = useState(false);
@@ -313,10 +321,20 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
 
           {/* Tab Navigation */}
           <div className="tab-nav" data-testid="tab-navigation">
-            <button onClick={() => setActiveTab('nfts')} className={`tab-btn ${activeTab === 'nfts' ? 'active' : ''}`} data-testid="tab-nfts">
+            <button
+              onClick={() => tabsEnabled && setActiveTab('nfts')}
+              className={`tab-btn ${activeTab === 'nfts' ? 'active' : ''}`}
+              data-testid="tab-nfts"
+              style={{ opacity: tabsEnabled ? 1 : 0.5, cursor: tabsEnabled ? 'pointer' : 'not-allowed' }}
+            >
               <Cube size={12} weight="bold" className="inline mr-2" />CREDENTIALS
             </button>
-            <button onClick={() => setActiveTab('waiting')} className={`tab-btn ${activeTab === 'waiting' ? 'active' : ''}`} data-testid="tab-waiting">
+            <button
+              onClick={() => tabsEnabled && setActiveTab('waiting')}
+              className={`tab-btn ${activeTab === 'waiting' ? 'active' : ''}`}
+              data-testid="tab-waiting"
+              style={{ opacity: tabsEnabled ? 1 : 0.5, cursor: tabsEnabled ? 'pointer' : 'not-allowed' }}
+            >
               <ListNumbers size={12} weight="bold" className="inline mr-2" />WAITING LIST
             </button>
           </div>
