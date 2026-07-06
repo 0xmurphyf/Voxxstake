@@ -81,10 +81,6 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
     }
   };
 
-  const skipName = () => {
-    setShowNamePrompt(false);
-  };
-
   return (
     <div className="app-container">
       {/* Auth Error */}
@@ -283,22 +279,12 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
                 />
                 <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
                   <button
-                    onClick={skipName}
-                    style={{
-                      background: 'transparent', border: '1px solid rgba(0,255,204,0.3)',
-                      color: 'rgba(0,255,204,0.6)', padding: '8px 18px',
-                      fontFamily: 'inherit', fontSize: '0.75rem', cursor: 'pointer',
-                    }}
-                  >
-                    SKIP
-                  </button>
-                  <button
                     onClick={saveName}
                     disabled={nameSaving || !nameInput.trim()}
                     style={{
                       background: 'rgba(0,255,204,0.1)', border: '1px solid #00FFCC',
-                      color: '#00FFCC', padding: '8px 18px',
-                      fontFamily: 'inherit', fontSize: '0.75rem', cursor: 'pointer',
+                      color: '#00FFCC', padding: '8px 24px',
+                      fontFamily: 'inherit', fontSize: '0.8rem', cursor: 'pointer',
                       opacity: (!nameInput.trim() || nameSaving) ? 0.4 : 1,
                     }}
                     data-testid="name-prompt-save"
