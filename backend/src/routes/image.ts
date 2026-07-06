@@ -47,7 +47,12 @@ router.get('/:objectId', async (req: Request, res: Response) => {
 
     // 3. Fetch metadata from chain to get image URL
     const metadata = await getNftMetadata(objectId);
-    const imageUrl = extractImageUrl(metadata as Record<string, unknown>);
+    // getNftMetadata already extracts image_url to the top level.
+    // Try that first, then fall back to raw content fields.
+    let imageUrl = metadata.image_url as string | null | undefined;
+    if (!imageUrl) {
+      imageUrl = extractImageUrl(metadata.raw_content as Record<string, unknown>);
+    }
 
     if (!imageUrl) {
       // Return a placeholder — transparent 1x1 pixel SVG

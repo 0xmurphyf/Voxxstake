@@ -29,22 +29,30 @@ function mimeToExt(mime: string): string {
   return map[mime] || 'png';
 }
 
-async function downloadImage(objectId: string): Promise<boolean> {
+type DownloadResult = 'cached' | 'downloaded' | 'failed';
+
+async function downloadImage(objectId: string): Promise<DownloadResult> {
   const hash = crypto.createHash('md5').update(objectId).digest('hex');
 
   // Skip if already cached on disk
   const existing = fs.readdirSync(CACHE_DIR).filter(f => f.startsWith(hash));
   if (existing.length > 0) {
-    return true; // already cached
+    console.log(`  [CACHED] ${objectId.slice(-8)}`);
+    return 'cached';
   }
 
   try {
     // Fetch metadata from chain
     const metadata = await getNftMetadata(objectId);
-    const imageUrl = extractImageUrl(metadata as Record<string, unknown>);
+    // getNftMetadata already extracts image_url to the top level.
+    // Try that first, then fall back to raw content fields.
+    let imageUrl = metadata.image_url as string | null | undefined;
+    if (!imageUrl) {
+      imageUrl = extractImageUrl(metadata.raw_content as Record<string, unknown>);
+    }
     if (!imageUrl) {
       console.log(`  [SKIP] ${objectId.slice(-8)} — no image URL`);
-      return false;
+      return 'failed';
     }
 
     // Download
@@ -55,7 +63,7 @@ async function downloadImage(objectId: string): Promise<boolean> {
 
     if (!res.ok) {
       console.log(`  [FAIL] ${objectId.slice(-8)} — HTTP ${res.status}`);
-      return false;
+      return 'failed';
     }
 
     const contentType = res.headers.get('content-type') || 'image/png';
@@ -68,10 +76,10 @@ async function downloadImage(objectId: string): Promise<boolean> {
 
     const sizeKB = (arrayBuf.byteLength / 1024).toFixed(1);
     console.log(`  [OK] ${objectId.slice(-8)} → ${filename} (${sizeKB} KB)`);
-    return true;
+    return 'downloaded';
   } catch (err) {
     console.log(`  [ERR] ${objectId.slice(-8)} — ${err instanceof Error ? err.message : String(err)}`);
-    return false;
+    return 'failed';
   }
 }
 
@@ -92,18 +100,9 @@ async function main() {
     const pct = ((i / ids.length) * 100).toFixed(0);
     console.log(`[${i + 1}/${ids.length} ${pct}%] ${ids[i]}`);
     const result = await downloadImage(ids[i]);
-    if (result === true) {
-      const hash = crypto.createHash('md5').update(ids[i]).digest('hex');
-      const existing = fs.readdirSync(CACHE_DIR).filter(f => f.startsWith(hash));
-      if (existing.length > 0 && i > 0) {
-        // Was already cached before this run → skipped
-        skipped++;
-      } else {
-        success++;
-      }
-    } else {
-      failed++;
-    }
+    if (result === 'downloaded') success++;
+    else if (result === 'cached') skipped++;
+    else failed++;
     // Small delay to avoid rate-limiting RPC/IPFS
     await new Promise(r => setTimeout(r, 200));
   }
