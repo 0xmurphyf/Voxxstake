@@ -1385,20 +1385,20 @@
             } catch (e) { /* leave the default PUBLIC-01 label */ }
         }
 
-        // ===== Footer access counter =====
-        // Increments once per visit in this browser, stored via localStorage.
-        // This is a per-device counter, not a shared global visitor count — there's
-        // no backend here to track that across everyone who opens the file.
-        function initAccessCounter() {
+        // ===== Footer access counter (global, via backend API) =====
+        async function initAccessCounter() {
             const el = document.getElementById('counter-digits');
             if (!el) return;
             try {
-                let count = parseInt(localStorage.getItem('voxx_access_count') || '0', 10);
-                count = (Number.isFinite(count) ? count : 0) + 1;
-                localStorage.setItem('voxx_access_count', String(count));
-                el.textContent = String(count).padStart(6, '0');
+                const res = await fetch('/api/visitor/count');
+                if (res.ok) {
+                    const data = await res.json();
+                    el.textContent = String(data.count).padStart(6, '0');
+                } else {
+                    el.textContent = '------';
+                }
             } catch (e) {
-                el.textContent = '000001';
+                el.textContent = '------';
             }
         }
 

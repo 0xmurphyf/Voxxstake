@@ -9,6 +9,7 @@ import stakingRouter from './routes/staking';
 import rankingRouter from './routes/ranking';
 import profileRouter from './routes/profile';
 import adminRouter from './routes/admin';
+import visitorRouter from './routes/visitor';
 import { startBackgroundSync } from './services/backgroundSync';
 
 async function main() {
@@ -55,6 +56,7 @@ async function main() {
   apiRouter.use('/ranking', rankingRouter);
   apiRouter.use('/profile', profileRouter);
   apiRouter.use('/admin', adminRouter);
+  apiRouter.use('/visitor', visitorRouter);
 
   app.use('/api', apiRouter);
 
