@@ -110,7 +110,7 @@ export function WaitingList({ authToken, walletAddress, profileVersion }) {
         >
           <span className="hud-label text-center" style={{ fontSize: '0.58rem' }}>#</span>
           <span className="hud-label" style={{ fontSize: '0.58rem' }}>APPLICANT</span>
-          <span className="hud-label text-center" style={{ fontSize: '0.58rem' }}>CRED</span>
+          <span className="hud-label text-center" style={{ fontSize: '0.58rem' }}>NFT</span>
           <span className="hud-label text-center" style={{ fontSize: '0.58rem' }}>ACCRUAL</span>
           <span className="hud-label text-right" style={{ fontSize: '0.58rem' }}>CREDITS</span>
         </div>

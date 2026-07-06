@@ -39,7 +39,7 @@ router.get('/', async (req: Request, res: Response) => {
     const allProfiles = await Profile.find({}).lean();
     const nameMap = new Map<string, string | null>();
     for (const p of allProfiles) {
-      nameMap.set(p.address, p.name || null);
+      nameMap.set(p.address.toLowerCase(), p.name || null);
     }
 
     // 2. Get ALL stakes (active + paused)
@@ -49,15 +49,16 @@ router.get('/', async (req: Request, res: Response) => {
     const stakesByAddress = new Map<string, IStake[]>();
     for (const stake of allStakes) {
       const s = stake as unknown as IStake;
-      const existing = stakesByAddress.get(s.address) || [];
+      const key = s.address.toLowerCase();
+      const existing = stakesByAddress.get(key) || [];
       existing.push(s);
-      stakesByAddress.set(s.address, existing);
+      stakesByAddress.set(key, existing);
     }
 
     // 3. Build entries: start from profiles (every authenticated user)
     const entries = allProfiles.map(p => {
-      const address = p.address;
-      const stakes = stakesByAddress.get(address) || [];
+      const address = p.address.toLowerCase();
+      const stakes = stakesByAddress.get(address) || stakesByAddress.get(p.address) || [];
       const activeStakes = stakes.filter(s => s.status === 'active');
       const nftCount = activeStakes.length;
       const multiplier = getHoldingMultiplier(nftCount);
@@ -84,7 +85,7 @@ router.get('/', async (req: Request, res: Response) => {
     });
 
     // 4. Also include any stake addresses NOT in Profile (edge case: legacy data)
-    const profileAddresses = new Set(allProfiles.map(p => p.address));
+    const profileAddresses = new Set(allProfiles.map(p => p.address.toLowerCase()));
     for (const [address, stakes] of stakesByAddress) {
       if (profileAddresses.has(address)) continue;
       const activeStakes = stakes.filter(s => s.status === 'active');

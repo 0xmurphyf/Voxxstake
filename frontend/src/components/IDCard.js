@@ -269,7 +269,7 @@ export function IDCard({ positions, stats, walletAddress, authToken, onProfileSa
               </p>
             </div>
             <div>
-              <span className="hud-label" style={{ fontSize: '0.68rem' }}>CREDENTIALS</span>
+              <span className="hud-label" style={{ fontSize: '0.68rem' }}>NFTs</span>
               <p className="mono" style={{ color: '#fff', fontSize: '0.95rem' }}>{totalNfts}</p>
             </div>
             <div>
