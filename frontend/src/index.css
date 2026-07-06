@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,7 +6,7 @@
 
 /* ===== ROOT CONTAINER — isolate from VOXX shell styles ===== */
 #root {
-  font-family: 'Rajdhani', sans-serif;
+  font-family: 'Share Tech Mono', monospace;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background: #000a0d;
@@ -20,7 +20,7 @@
 }
 
 #root h1, #root h2, #root h3, #root h4, #root h5, #root h6 {
-  font-family: 'Orbitron', sans-serif;
+  font-family: 'Share Tech Mono', monospace;
   font-weight: 700;
   letter-spacing: 0.04em;
 }
@@ -31,7 +31,7 @@
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: 'Orbitron', sans-serif;
+  font-family: 'Share Tech Mono', monospace;
   font-weight: 700;
   letter-spacing: 0.04em;
 }
@@ -102,7 +102,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .term-title {
-  font-family: 'Orbitron', sans-serif;
+  font-family: 'Share Tech Mono', monospace;
   font-weight: 700;
   font-size: 1.35rem;
   color: #fff;
@@ -186,7 +186,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .flow-title {
-  font-family: 'Orbitron', sans-serif;
+  font-family: 'Share Tech Mono', monospace;
   font-weight: 700;
   font-size: 0.82rem;
   color: #fff;
@@ -230,7 +230,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .status-value {
-  font-family: 'Orbitron', sans-serif;
+  font-family: 'Share Tech Mono', monospace;
   font-weight: 700;
   font-size: 1rem;
   color: #fff;
@@ -692,7 +692,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .stat-mini-value {
-  font-family: 'Orbitron', sans-serif;
+  font-family: 'Share Tech Mono', monospace;
   font-weight: 700;
   font-size: 1.2rem;
   color: #fff;

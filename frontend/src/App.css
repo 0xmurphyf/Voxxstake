@@ -46,7 +46,7 @@
 }
 
 .nav-text h3 {
-  font-family: 'Orbitron', sans-serif;
+  font-family: 'Share Tech Mono', monospace;
   font-weight: 700;
   font-size: 0.85rem;
   color: #fff;
@@ -157,7 +157,7 @@
 }
 
 .hud-value {
-  font-family: 'Orbitron', sans-serif;
+  font-family: 'Share Tech Mono', monospace;
   font-weight: 700;
 }
 

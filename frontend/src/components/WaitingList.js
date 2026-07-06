@@ -72,38 +72,38 @@ export function WaitingList({ authToken }) {
     );
   }
 
+  const cols = '36px 1fr 70px 80px 80px';
+
   return (
     <div data-testid="waiting-list">
       {/* Summary bar */}
-      <div className="term-panel p-4 mb-4" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+      <div className="term-panel p-3 mb-4" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <div className="flex items-center gap-2">
-          <ListNumbers size={18} weight="bold" className="text-[#00FFCC]" />
-          <span className="hud-value text-sm">CITIZENSHIP WAITING LIST</span>
+          <ListNumbers size={16} weight="bold" style={{ color: '#00FFCC' }} />
+          <span className="hud-value" style={{ fontSize: '0.78rem' }}>CITIZENSHIP WAITING LIST</span>
         </div>
-        <span className="mono text-xs" style={{ color: 'rgba(0,255,204,0.6)' }}>
+        <span className="mono" style={{ color: 'rgba(0,255,204,0.6)', fontSize: '0.7rem' }}>
           {totalStakers} REGISTERED APPLICANTS
         </span>
       </div>
 
-      {/* Table header */}
+      {/* Table */}
       <div className="cp-panel cp-corner-cuts" style={{ overflow: 'hidden' }}>
         <div
-          className="grid gap-2 p-3 px-4"
+          className="grid gap-2 p-2 px-3"
           style={{
-            gridTemplateColumns: '40px 1fr 80px 80px 90px 100px',
+            gridTemplateColumns: cols,
             borderBottom: '1px solid rgba(0,255,204,0.12)',
             background: 'rgba(0,255,204,0.03)',
           }}
         >
-          <span className="hud-label text-center">#</span>
-          <span className="hud-label">APPLICANT</span>
-          <span className="hud-label text-center">CREDENTIALS</span>
-          <span className="hud-label text-center">RATE</span>
-          <span className="hud-label text-center">REGISTERED</span>
-          <span className="hud-label text-right">CREDITS</span>
+          <span className="hud-label text-center" style={{ fontSize: '0.58rem' }}>#</span>
+          <span className="hud-label" style={{ fontSize: '0.58rem' }}>APPLICANT</span>
+          <span className="hud-label text-center" style={{ fontSize: '0.58rem' }}>CRED</span>
+          <span className="hud-label text-center" style={{ fontSize: '0.58rem' }}>REGISTERED</span>
+          <span className="hud-label text-right" style={{ fontSize: '0.58rem' }}>CREDITS</span>
         </div>
 
-        {/* Rows */}
         <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
           {rankings.map((entry, idx) => {
             const rank = idx + 1;
@@ -111,9 +111,9 @@ export function WaitingList({ authToken }) {
             return (
               <div
                 key={idx}
-                className="grid gap-2 p-3 px-4"
+                className="grid gap-2 p-2 px-3"
                 style={{
-                  gridTemplateColumns: '40px 1fr 80px 80px 90px 100px',
+                  gridTemplateColumns: cols,
                   borderBottom: '1px solid rgba(0,255,204,0.06)',
                   background: idx % 2 === 0 ? 'transparent' : 'rgba(0,255,204,0.02)',
                   transition: 'background 0.2s',
@@ -125,14 +125,14 @@ export function WaitingList({ authToken }) {
                 <div className="flex items-center justify-center">
                   {isTop3 ? (
                     <Trophy
-                      size={16}
+                      size={14}
                       weight="fill"
                       style={{
                         color: rank === 1 ? '#FFD700' : rank === 2 ? '#C0C0C0' : '#CD7F32',
                       }}
                     />
                   ) : (
-                    <span className="mono text-xs" style={{ color: 'rgba(0,255,204,0.5)' }}>
+                    <span className="mono" style={{ color: 'rgba(0,255,204,0.5)', fontSize: '0.7rem' }}>
                       {rank}
                     </span>
                   )}
@@ -140,36 +140,29 @@ export function WaitingList({ authToken }) {
 
                 {/* Address */}
                 <div className="flex items-center min-w-0">
-                  <span className="mono text-xs truncate" style={{ color: isTop3 ? '#fff' : 'rgba(0,255,204,0.7)' }}>
+                  <span className="mono truncate" style={{ color: isTop3 ? '#fff' : 'rgba(0,255,204,0.7)', fontSize: '0.7rem' }}>
                     {entry.address}
                   </span>
                 </div>
 
                 {/* Credential count */}
                 <div className="flex items-center justify-center gap-1">
-                  <Cube size={10} weight="bold" style={{ color: 'rgba(0,255,204,0.5)' }} />
-                  <span className="mono text-xs" style={{ color: '#fff' }}>{entry.credential_count}</span>
-                </div>
-
-                {/* Multiplier */}
-                <div className="flex items-center justify-center">
-                  <span className="status-badge badge-active" style={{ fontSize: '0.6rem', padding: '2px 8px' }}>
-                    {entry.multiplier.toFixed(3)}x
-                  </span>
+                  <Cube size={9} weight="bold" style={{ color: 'rgba(0,255,204,0.5)' }} />
+                  <span className="mono" style={{ color: '#fff', fontSize: '0.7rem' }}>{entry.credential_count}</span>
                 </div>
 
                 {/* Duration */}
                 <div className="flex items-center justify-center gap-1">
-                  <Clock size={10} style={{ color: 'rgba(0,255,204,0.4)' }} />
-                  <span className="mono text-xs" style={{ color: 'rgba(0,255,204,0.65)' }}>
+                  <Clock size={9} style={{ color: 'rgba(0,255,204,0.4)' }} />
+                  <span className="mono" style={{ color: 'rgba(0,255,204,0.65)', fontSize: '0.7rem' }}>
                     {formatDuration(entry.max_duration_days)}
                   </span>
                 </div>
 
                 {/* Credits */}
                 <div className="flex items-center justify-end gap-1">
-                  <Lightning size={10} weight="fill" style={{ color: '#00FF88' }} />
-                  <span className="mono text-xs" style={{ color: '#00FF88', fontWeight: 600 }}>
+                  <Lightning size={9} weight="fill" style={{ color: '#00FF88' }} />
+                  <span className="mono" style={{ color: '#00FF88', fontWeight: 600, fontSize: '0.7rem' }}>
                     {entry.total_credits.toFixed(0)}
                   </span>
                 </div>
@@ -181,8 +174,8 @@ export function WaitingList({ authToken }) {
 
       {/* Refresh button */}
       <div className="text-center mt-4">
-        <button onClick={fetchRankings} className="btn-ghost text-xs">
-          <Clock size={12} weight="bold" />
+        <button onClick={fetchRankings} className="btn-ghost" style={{ fontSize: '0.65rem' }}>
+          <Clock size={11} weight="bold" />
           REFRESH
         </button>
       </div>
