@@ -496,6 +496,10 @@
         @media (max-width: 640px) { .neoterra-embed-wrap { height: 65vh; min-height: 380px; } }
 
         #screen-staking { padding: 0; }
+        #screen-staking #root {
+            width: 100%; min-height: 75vh; background: #000a0d; overflow: hidden;
+        }
+        @media (max-width: 640px) { #screen-staking #root { min-height: 65vh; } }
 
         /* Root Terminal Easter egg modal */
         .root-modal-box { background: #050505; border: 1px solid var(--c-blue); box-shadow: 0 0 40px rgba(46,155,255,0.25); text-align: left; }
