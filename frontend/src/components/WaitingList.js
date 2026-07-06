@@ -1,18 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
-import { ListNumbers, Trophy, Cube, Clock, Lightning } from '@phosphor-icons/react';
+import { ListNumbers, Trophy, Cube, Lightning } from '@phosphor-icons/react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
 const API = `${BACKEND_URL}/api`;
-
-function formatDuration(days) {
-  if (days < 1) {
-    const hours = days * 24;
-    if (hours < 1) return `${(hours * 60).toFixed(0)}m`;
-    return `${hours.toFixed(1)}h`;
-  }
-  return `${days.toFixed(1)}d`;
-}
 
 export function WaitingList({ authToken, walletAddress, profileVersion }) {
   const [rankings, setRankings] = useState([]);
@@ -120,7 +111,7 @@ export function WaitingList({ authToken, walletAddress, profileVersion }) {
           <span className="hud-label text-center" style={{ fontSize: '0.58rem' }}>#</span>
           <span className="hud-label" style={{ fontSize: '0.58rem' }}>APPLICANT</span>
           <span className="hud-label text-center" style={{ fontSize: '0.58rem' }}>CRED</span>
-          <span className="hud-label text-center" style={{ fontSize: '0.58rem' }}>REGISTERED</span>
+          <span className="hud-label text-center" style={{ fontSize: '0.58rem' }}>ACCRUAL</span>
           <span className="hud-label text-right" style={{ fontSize: '0.58rem' }}>CREDITS</span>
         </div>
 
@@ -189,11 +180,11 @@ export function WaitingList({ authToken, walletAddress, profileVersion }) {
                   <span className="mono" style={{ color: '#fff', fontSize: '0.7rem' }}>{entry.credential_count}</span>
                 </div>
 
-                {/* Duration */}
+                {/* Accrual rate */}
                 <div className="flex items-center justify-center gap-1">
-                  <Clock size={9} style={{ color: 'rgba(0,255,204,0.4)' }} />
-                  <span className="mono" style={{ color: 'rgba(0,255,204,0.65)', fontSize: '0.7rem' }}>
-                    {formatDuration(entry.max_duration_days)}
+                  <Lightning size={9} weight="fill" style={{ color: '#00FF88' }} />
+                  <span className="mono" style={{ color: '#00FF88', fontSize: '0.7rem' }}>
+                    {(entry.credential_count * (entry.multiplier || 1)).toFixed(1)}
                   </span>
                 </div>
 
