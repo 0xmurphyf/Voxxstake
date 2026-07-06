@@ -37,7 +37,9 @@ router.post('/nonce', async (req: Request, res: Response) => {
     // Clean up any existing unused nonces for this address (prevents accumulation)
     await Nonce.deleteMany({ address: normalized, used: false });
 
-    const nonce = crypto.randomBytes(16).toString('hex');
+    const randomPart = crypto.randomBytes(16).toString('hex');
+    // Human-readable message so the user's wallet shows what they're signing
+    const nonce = `Apply for Neoterra Citizenship\n\nWallet: ${normalized}\nNonce: ${randomPart}`;
 
     await Nonce.create({
       address: normalized,
