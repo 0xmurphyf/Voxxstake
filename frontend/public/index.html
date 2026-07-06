@@ -1107,7 +1107,7 @@
                         target.appendChild(document.createTextNode(ch));
                         typedChars++;
                         updateProgress();
-                        if (ch !== ' ') SFX.bootType();
+                        if (ch !== ' ') SFX.type();
                         await new Promise(r => setTimeout(r, charSpeed));
                     }
                 }
@@ -1180,7 +1180,7 @@
             // Type character by character + random tiny jitter to simulate real terminal
             for (let i = 0; i < pathName.length; i++) {
                 pathTextEl.textContent += pathName.charAt(i);
-                if (!prefersReducedMotion && pathName.charAt(i) !== '_') SFX.bootType();
+                if (!prefersReducedMotion && pathName.charAt(i) !== '_') SFX.type();
                 await new Promise(r => setTimeout(r, prefersReducedMotion ? 0 : (22 + Math.random() * 18)));
             }
             await new Promise(r => setTimeout(r, 300));

@@ -10,11 +10,15 @@ import { NFTList } from './components/NFTList';
 import { NFTDetail } from './components/NFTDetail';
 import { WaitingList } from './components/WaitingList';
 import { IDCard } from './components/IDCard';
+import axios from 'axios';
 import {
   Cube, ListNumbers, Cpu,
   Wallet, ShieldCheck, Fingerprint, IdentificationBadge, Clock, Scales,
   Warning, SignOut, Lightning
 } from '@phosphor-icons/react';
+
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
+const API = `${BACKEND_URL}/api`;
 
 /* ============================================================
    LANDING PAGE — Neoterra Citizenship Registry
@@ -24,6 +28,11 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
   const { positions, stats, sellAlerts, loading, syncing } = useStaking(authToken);
   const [activeTab, setActiveTab] = useState('nfts');
 
+  // New user name prompt
+  const [showNamePrompt, setShowNamePrompt] = useState(false);
+  const [nameInput, setNameInput] = useState('');
+  const [nameSaving, setNameSaving] = useState(false);
+
   useEffect(() => {
     loadToken();
   }, []); // eslint-disable-line
@@ -31,6 +40,40 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
   useEffect(() => {
     if (wallet.connected) loadToken();
   }, [wallet.connected]); // eslint-disable-line
+
+  // Check if user has a profile name; if not, show prompt
+  useEffect(() => {
+    if (!authToken) return;
+    let cancelled = false;
+    axios.get(`${API}/profile`, {
+      headers: { Authorization: `Bearer ${authToken}` }
+    }).then(r => {
+      if (!cancelled && !r.data.name) {
+        setShowNamePrompt(true);
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [authToken]);
+
+  const saveName = async () => {
+    const trimmed = nameInput.trim().slice(0, 32);
+    if (!trimmed) return;
+    setNameSaving(true);
+    try {
+      await axios.put(`${API}/profile`, { name: trimmed }, {
+        headers: { Authorization: `Bearer ${authToken}` }
+      });
+      setShowNamePrompt(false);
+    } catch (err) {
+      console.error('Failed to save name:', err);
+    } finally {
+      setNameSaving(false);
+    }
+  };
+
+  const skipName = () => {
+    setShowNamePrompt(false);
+  };
 
   return (
     <div className="app-container">
@@ -194,6 +237,69 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
       ) : (
         /* ===== AUTHENTICATED: Dashboard ===== */
         <>
+          {/* Name Prompt Modal for new users */}
+          {showNamePrompt && (
+            <div style={{
+              position: 'fixed', inset: 0, zIndex: 9999,
+              background: 'rgba(0,0,0,0.85)', display: 'flex',
+              alignItems: 'center', justifyContent: 'center',
+            }}>
+              <div className="term-panel" style={{
+                width: '90%', maxWidth: 420, padding: '28px 24px',
+                border: '1px solid #00FFCC',
+                boxShadow: '0 0 30px rgba(0,255,204,0.15)',
+              }}>
+                <h2 className="term-header" style={{ marginBottom: 8 }}>IDENTITY REGISTRATION</h2>
+                <p style={{ color: 'rgba(0,255,204,0.6)', fontSize: '0.75rem', marginBottom: 20 }}>
+                  Welcome to the Neoterra Citizenship Registry. Choose a name to be known by in the Waiting List.
+                </p>
+                <input
+                  type="text"
+                  value={nameInput}
+                  onChange={(e) => setNameInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') saveName(); }}
+                  placeholder="Enter your citizen name..."
+                  maxLength={32}
+                  autoFocus
+                  style={{
+                    width: '100%', padding: '10px 14px',
+                    background: 'rgba(0,255,204,0.05)',
+                    border: '1px solid rgba(0,255,204,0.3)',
+                    color: '#00FFCC', fontFamily: 'inherit',
+                    fontSize: '0.9rem', outline: 'none',
+                    marginBottom: 18,
+                  }}
+                  data-testid="name-prompt-input"
+                />
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                  <button
+                    onClick={skipName}
+                    style={{
+                      background: 'transparent', border: '1px solid rgba(0,255,204,0.3)',
+                      color: 'rgba(0,255,204,0.6)', padding: '8px 18px',
+                      fontFamily: 'inherit', fontSize: '0.75rem', cursor: 'pointer',
+                    }}
+                  >
+                    SKIP
+                  </button>
+                  <button
+                    onClick={saveName}
+                    disabled={nameSaving || !nameInput.trim()}
+                    style={{
+                      background: 'rgba(0,255,204,0.1)', border: '1px solid #00FFCC',
+                      color: '#00FFCC', padding: '8px 18px',
+                      fontFamily: 'inherit', fontSize: '0.75rem', cursor: 'pointer',
+                      opacity: (!nameInput.trim() || nameSaving) ? 0.4 : 1,
+                    }}
+                    data-testid="name-prompt-save"
+                  >
+                    {nameSaving ? 'SAVING...' : 'REGISTER'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* IDENTITY CARD */}
           <IDCard
             positions={positions}
