@@ -79,7 +79,7 @@ export function extractNftName(objData: Record<string, unknown> | null | undefin
 }
 
 // ─── Low-level JSON-RPC call with failover ──────────────────────
-async function rpcCall(method: string, params: unknown[]): Promise<unknown> {
+export async function rpcCall(method: string, params: unknown[]): Promise<unknown> {
   const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method, params });
 
   let lastError: Error | null = null;

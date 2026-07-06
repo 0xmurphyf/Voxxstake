@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { ListNumbers, Trophy, Cube, Clock, Lightning } from '@phosphor-icons/react';
 
@@ -41,6 +41,16 @@ export function WaitingList({ authToken, walletAddress, profileVersion }) {
   useEffect(() => {
     fetchRankings();
   }, [fetchRankings, profileVersion]);
+
+  // Defensive refetch: when walletAddress transitions from falsy → truthy,
+  // force a refetch to get the current user's rank highlight.
+  const prevAddressRef = useRef(walletAddress);
+  useEffect(() => {
+    if (walletAddress && !prevAddressRef.current) {
+      fetchRankings();
+    }
+    prevAddressRef.current = walletAddress;
+  }, [walletAddress, fetchRankings]);
 
   if (loading) {
     return (

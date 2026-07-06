@@ -11,6 +11,7 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const profile = await Profile.findOne({ address: req.address! }).lean();
     res.json({
+      address: req.address!,
       name: profile?.name || '',
       pfp_url: profile?.pfp_url || null,
       pfp_object_id: profile?.pfp_object_id || null,
@@ -40,6 +41,7 @@ router.put('/', authMiddleware, async (req: AuthRequest, res: Response) => {
     ).lean();
 
     res.json({
+      address: req.address!,
       name: profile?.name || '',
       pfp_url: profile?.pfp_url || null,
       pfp_object_id: profile?.pfp_object_id || null,

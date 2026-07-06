@@ -32,6 +32,7 @@ export function IDCard({ positions, stats, walletAddress, authToken, balance, on
   const [pfpObjectId, setPfpObjectId] = useState(null);
   const [pfpValid, setPfpValid] = useState(true);
   const [checkingPfp, setCheckingPfp] = useState(false);
+  const [backendAddress, setBackendAddress] = useState(null);
 
   // Edit state
   const [editingName, setEditingName] = useState(false);
@@ -46,11 +47,12 @@ export function IDCard({ positions, stats, walletAddress, authToken, balance, on
       const r = await axios.get(`${API}/profile`, {
         headers: { Authorization: `Bearer ${authToken}` },
       });
-      const { name, pfp_url, pfp_object_id } = r.data;
+      const { name, pfp_url, pfp_object_id, address } = r.data;
       setDisplayName(name || '');
       setPfpUrl(pfp_url || null);
       setPfpObjectId(pfp_object_id || null);
       setNameDraft(name || '');
+      if (address) setBackendAddress(address);
     } catch (err) {
       console.error('Failed to load profile:', err);
     }
@@ -134,9 +136,10 @@ export function IDCard({ positions, stats, walletAddress, authToken, balance, on
     setEditingName(false);
   };
 
-  // Generate temp ID
-  const tempId = walletAddress
-    ? `NTR-${walletAddress.slice(2, 8).toUpperCase()}`
+  // Generate temp ID — use backend address as fallback when wallet hasn't reconnected yet
+  const resolvedAddress = walletAddress || backendAddress;
+  const tempId = resolvedAddress
+    ? `NTR-${resolvedAddress.slice(2, 8).toUpperCase()}`
     : 'NTR-000000';
 
   return (
@@ -299,7 +302,7 @@ export function IDCard({ positions, stats, walletAddress, authToken, balance, on
             <div>
               <span className="hud-label" style={{ fontSize: '0.68rem' }}>WALLET</span>
               <p className="mono" style={{ color: 'rgba(0,255,204,0.5)', fontSize: '0.95rem' }}>
-                {walletAddress ? `${walletAddress.slice(0, 14)}...${walletAddress.slice(-6)}` : '—'}
+                {resolvedAddress ? `${resolvedAddress.slice(0, 14)}...${resolvedAddress.slice(-6)}` : '—'}
               </p>
             </div>
           </div>

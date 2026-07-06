@@ -346,7 +346,7 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
 function App() {
   const wallet = useWallet();
   const { authToken, login, logout, isAuthenticating, authError, loadToken } = useWalletAuth();
-  const balance = useSuiBalance(wallet.account?.address);
+  const balance = useSuiBalance(wallet.account?.address, authToken);
   const navigate = useNavigate();
 
   const handleLogout = () => {

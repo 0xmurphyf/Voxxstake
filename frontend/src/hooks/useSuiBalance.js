@@ -1,16 +1,21 @@
 import { useState, useEffect } from 'react';
+import axios from 'axios';
 
-const SUI_RPC = 'https://fullnode.mainnet.sui.io:443';
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
+const API = `${BACKEND_URL}/api`;
 
 /**
- * Fetch SUI balance for a given address.
+ * Fetch SUI balance for a given address via backend proxy.
  * Returns balance in SUI (not MIST), or null if loading/error.
+ *
+ * @param {string|null|undefined} address - Sui wallet address
+ * @param {string|null} authToken - JWT auth token
  */
-export function useSuiBalance(address) {
+export function useSuiBalance(address, authToken) {
   const [balance, setBalance] = useState(null);
 
   useEffect(() => {
-    if (!address) {
+    if (!address || !authToken) {
       setBalance(null);
       return;
     }
@@ -19,21 +24,11 @@ export function useSuiBalance(address) {
 
     async function fetchBalance() {
       try {
-        const res = await fetch(SUI_RPC, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            jsonrpc: '2.0',
-            id: 1,
-            method: 'suix_getBalance',
-            params: [address],
-          }),
+        const r = await axios.get(`${API}/balance/${address}`, {
+          headers: { Authorization: `Bearer ${authToken}` },
         });
-        const data = await res.json();
-        if (!cancelled && data.result) {
-          // totalBalance is in MIST (1 SUI = 10^9 MIST)
-          const mist = parseInt(data.result.totalBalance || '0', 10);
-          setBalance((mist / 1e9).toFixed(2));
+        if (!cancelled && r.data) {
+          setBalance(r.data.balance);
         }
       } catch (err) {
         if (!cancelled) {
@@ -47,7 +42,7 @@ export function useSuiBalance(address) {
     // Refresh every 30s
     const interval = setInterval(fetchBalance, 30000);
     return () => { cancelled = true; clearInterval(interval); };
-  }, [address]);
+  }, [address, authToken]);
 
   return balance;
 }
