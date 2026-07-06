@@ -27,6 +27,7 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
   const wallet = useWallet();
   const { positions, stats, sellAlerts, loading, syncing } = useStaking(authToken);
   const [activeTab, setActiveTab] = useState('nfts');
+  const [profileVersion, setProfileVersion] = useState(0);
 
   // New user name prompt
   const [showNamePrompt, setShowNamePrompt] = useState(false);
@@ -64,6 +65,7 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
         headers: { Authorization: `Bearer ${authToken}` }
       });
       setShowNamePrompt(false);
+      setProfileVersion(v => v + 1);
     } catch (err) {
       console.error('Failed to save name:', err);
     } finally {
@@ -307,6 +309,7 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
             walletAddress={wallet.account?.address}
             authToken={authToken}
             balance={balance}
+            onProfileSaved={() => setProfileVersion(v => v + 1)}
           />
 
           {/* Tab Navigation */}
@@ -328,7 +331,7 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
 
           {activeTab === 'waiting' && (
             <div data-testid="waiting-tab-content" className="mt-6">
-              <WaitingList authToken={authToken} walletAddress={wallet.account?.address} />
+              <WaitingList authToken={authToken} walletAddress={wallet.account?.address} profileVersion={profileVersion} />
             </div>
           )}
         </>

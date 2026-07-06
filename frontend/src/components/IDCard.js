@@ -15,7 +15,7 @@ function formatDuration(days) {
   return `${days.toFixed(1)}d`;
 }
 
-export function IDCard({ positions, stats, walletAddress, authToken, balance }) {
+export function IDCard({ positions, stats, walletAddress, authToken, balance, onProfileSaved }) {
   const activePositions = positions?.filter(p => p.status === 'active') || [];
   const totalNfts = stats?.nft_count || activePositions.length || 0;
   const totalCredits = (stats?.total_lore_points || 0).toFixed(0);
@@ -68,6 +68,8 @@ export function IDCard({ positions, stats, walletAddress, authToken, balance }) 
       await axios.put(`${API}/profile`, updates, {
         headers: { Authorization: `Bearer ${authToken}` },
       });
+      // Notify parent so WaitingList can refresh
+      if (onProfileSaved) onProfileSaved();
     } catch (err) {
       console.error('Failed to save profile:', err);
     } finally {

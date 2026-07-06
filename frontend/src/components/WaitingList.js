@@ -14,7 +14,7 @@ function formatDuration(days) {
   return `${days.toFixed(1)}d`;
 }
 
-export function WaitingList({ authToken, walletAddress }) {
+export function WaitingList({ authToken, walletAddress, profileVersion }) {
   const [rankings, setRankings] = useState([]);
   const [totalStakers, setTotalStakers] = useState(0);
   const [currentUserRank, setCurrentUserRank] = useState(null);
@@ -40,7 +40,7 @@ export function WaitingList({ authToken, walletAddress }) {
 
   useEffect(() => {
     fetchRankings();
-  }, [fetchRankings]);
+  }, [fetchRankings, profileVersion]);
 
   if (loading) {
     return (
