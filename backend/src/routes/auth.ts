@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { Nonce } from '../models/Nonce';
+import { Profile } from '../models/Profile';
 import { verifySignature } from '../services/sui';
 import { config } from '../config';
 import { NONCE_EXPIRY_SECONDS, JWT_EXPIRY_HOURS, JWT_ALGORITHM } from '../types';
@@ -109,6 +110,14 @@ router.post('/verify', async (req: Request, res: Response) => {
 
     // DELETE the nonce immediately — one-time use, anti-replay
     await Nonce.deleteOne({ _id: doc._id });
+
+    // Ensure a Profile exists for every authenticated user (even without NFTs).
+    // upsert: creates if not exists, no-op otherwise.
+    await Profile.findOneAndUpdate(
+      { address: normalized },
+      { $setOnInsert: { address: normalized, name: '', updated_at: new Date().toISOString() } },
+      { upsert: true }
+    );
 
     // Issue JWT with exp claim
     const now = Math.floor(Date.now() / 1000);

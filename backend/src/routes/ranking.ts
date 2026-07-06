@@ -23,9 +23,10 @@ function formatDisplayName(address: string, profileName?: string | null): string
  * GET /api/ranking?address=<optional>
  *
  * Public endpoint — no auth required.
- * Returns ALL applicants (including those who registered but currently
- * hold zero NFTs — their paused stakes still count as "applied").
- * Ranked by total citizenship credits.
+ * Returns ALL applicants from the Profile collection (every authenticated
+ * user), merged with Stake data for credits/NFT counts.
+ * Users who authenticated but never held an NFT appear with 0 credits.
+ * Ranked by total citizenship credits (0-credit users at the bottom).
  *
  * If ?address= is provided, the response includes current_user_rank.
  */
@@ -34,28 +35,29 @@ router.get('/', async (req: Request, res: Response) => {
     const now = new Date();
     const queryAddress = (req.query.address as string || '').toLowerCase();
 
-    // Get ALL stakes (active + paused) — every address that ever registered
-    const allStakes = await Stake.find({}).lean();
-
-    // Group by address
-    const byAddress = new Map<string, IStake[]>();
-    for (const stake of allStakes) {
-      const s = stake as unknown as IStake;
-      const existing = byAddress.get(s.address) || [];
-      existing.push(s);
-      byAddress.set(s.address, existing);
-    }
-
-    // Fetch all profiles for display names (batch query)
-    const addressList = Array.from(byAddress.keys());
-    const profiles = await Profile.find({ address: { $in: addressList } }).lean();
+    // 1. Get ALL profiles — every user who ever authenticated
+    const allProfiles = await Profile.find({}).lean();
     const nameMap = new Map<string, string | null>();
-    for (const p of profiles) {
+    for (const p of allProfiles) {
       nameMap.set(p.address, p.name || null);
     }
 
-    // Build ranking entries
-    const entries = Array.from(byAddress.entries()).map(([address, stakes]) => {
+    // 2. Get ALL stakes (active + paused)
+    const allStakes = await Stake.find({}).lean();
+
+    // Group stakes by address
+    const stakesByAddress = new Map<string, IStake[]>();
+    for (const stake of allStakes) {
+      const s = stake as unknown as IStake;
+      const existing = stakesByAddress.get(s.address) || [];
+      existing.push(s);
+      stakesByAddress.set(s.address, existing);
+    }
+
+    // 3. Build entries: start from profiles (every authenticated user)
+    const entries = allProfiles.map(p => {
+      const address = p.address;
+      const stakes = stakesByAddress.get(address) || [];
       const activeStakes = stakes.filter(s => s.status === 'active');
       const nftCount = activeStakes.length;
       const multiplier = getHoldingMultiplier(nftCount);
@@ -81,10 +83,38 @@ router.get('/', async (req: Request, res: Response) => {
       };
     });
 
-    // Sort by total credits descending
+    // 4. Also include any stake addresses NOT in Profile (edge case: legacy data)
+    const profileAddresses = new Set(allProfiles.map(p => p.address));
+    for (const [address, stakes] of stakesByAddress) {
+      if (profileAddresses.has(address)) continue;
+      const activeStakes = stakes.filter(s => s.status === 'active');
+      const nftCount = activeStakes.length;
+      const multiplier = getHoldingMultiplier(nftCount);
+
+      let totalCredits = 0;
+      let maxDurationDays = 0;
+      for (const stake of stakes) {
+        const totalSec = computeTotalActiveSeconds(stake, now);
+        const { points, durationDays } = computePoints(totalSec, multiplier);
+        totalCredits += points;
+        if (durationDays > maxDurationDays) maxDurationDays = durationDays;
+      }
+
+      entries.push({
+        address,
+        display_address: `${address.slice(0, 8)}...${address.slice(-6)}`,
+        display_name: formatDisplayName(address, null),
+        credential_count: nftCount,
+        multiplier,
+        total_credits: totalCredits,
+        max_duration_days: maxDurationDays,
+      });
+    }
+
+    // 5. Sort by total credits descending (0-credit users sink to bottom)
     entries.sort((a, b) => b.total_credits - a.total_credits);
 
-    // Find current user's rank if address provided
+    // 6. Find current user's rank if address provided
     let currentUserRank: number | null = null;
     if (queryAddress) {
       const idx = entries.findIndex(e => e.address === queryAddress);
