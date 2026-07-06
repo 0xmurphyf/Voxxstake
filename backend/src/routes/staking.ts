@@ -46,7 +46,7 @@ async function syncStakesForAddress(
   const nowIso = now.toISOString();
 
   // Fetch owned NFTs from chain (lite mode: type + display only)
-  const ownedNfts = await getOwnedObjects(address, VOXX_TYPE, true);
+  const { objects: ownedNfts, kioskError } = await getOwnedObjects(address, VOXX_TYPE, true);
   const ownedMap = new Map<string, { name: string; image_url: string | null }>();
   for (const nft of ownedNfts) {
     const data = (nft as Record<string, unknown>).data as Record<string, unknown>;
@@ -97,21 +97,29 @@ async function syncStakesForAddress(
     }
   }
 
-  // 2) Pause stakes for NFTs no longer in wallet
-  for (const [objId, stake] of existingMap) {
-    if (!ownedMap.has(objId) && stake.status === 'active') {
-      let sessionSeconds = 0.0;
-      if (stake.current_session_start) {
-        const sessionStart = new Date(stake.current_session_start);
-        sessionSeconds = Math.max(0.0, (now.getTime() - sessionStart.getTime()) / 1000);
+  // 2) Pause stakes for NFTs no longer in wallet.
+  //    BUT: if Kiosk scan had an error, skip pausing — we might have missed
+  //    Kiosk-owned NFTs due to RPC flakiness. They'll be cleaned up next round.
+  if (!kioskError) {
+    for (const [objId, stake] of existingMap) {
+      if (!ownedMap.has(objId) && stake.status === 'active') {
+        let sessionSeconds = 0.0;
+        if (stake.current_session_start) {
+          const sessionStart = new Date(stake.current_session_start);
+          sessionSeconds = Math.max(0.0, (now.getTime() - sessionStart.getTime()) / 1000);
+        }
+        stake.status = 'paused';
+        stake.current_session_start = null;
+        stake.total_staked_seconds = (stake.total_staked_seconds || 0.0) + sessionSeconds;
+        stake.last_synced = nowIso;
+        await stake.save();
+        sellAlerts.push(stake.name || `VOXX #${objId.slice(-6)}`);
       }
-      stake.status = 'paused';
-      stake.current_session_start = null;
-      stake.total_staked_seconds = (stake.total_staked_seconds || 0.0) + sessionSeconds;
-      stake.last_synced = nowIso;
-      await stake.save();
-      sellAlerts.push(stake.name || `VOXX #${objId.slice(-6)}`);
     }
+  } else if (existingMap.size > 0 && ownedMap.size === 0) {
+    // Kiosk scan failed AND we found zero direct NFTs, but DB has records.
+    // This is suspicious — log a warning and skip pausing.
+    console.warn(`[Sync] Kiosk scan failed for ${address.slice(0, 10)}... — 0 direct NFTs found, ${existingMap.size} DB stakes preserved`);
   }
 
   return { ownedMap, sellAlerts };
@@ -315,7 +323,7 @@ router.get('/debug/nfts', async (req: AuthRequest, res: Response) => {
     return;
   }
   try {
-    const nfts = await getOwnedObjects(address, VOXX_TYPE, true);
+    const { objects: nfts } = await getOwnedObjects(address, VOXX_TYPE, true);
     res.json({ address, count: nfts.length, nfts: nfts.slice(0, 5) });
   } catch (err) {
     console.error('[DEBUG] NFT scan error:', err);

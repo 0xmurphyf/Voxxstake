@@ -340,15 +340,21 @@ export async function getOwnedObjects(
   address: string,
   typeFilter?: string,
   lite: boolean = true
-): Promise<Record<string, unknown>[]> {
+): Promise<{ objects: Record<string, unknown>[]; kioskError: boolean }> {
   // 1. Directly owned NFTs
   const direct = await getDirectlyOwnedObjects(address, typeFilter, lite);
 
   // 2. Kiosk-owned NFTs (only if we have a type filter, since kiosk
   //    items need to be filtered by type)
   let kiosk: Record<string, unknown>[] = [];
+  let kioskError = false;
   if (typeFilter) {
-    kiosk = await getKioskOwnedObjects(address, typeFilter);
+    try {
+      kiosk = await getKioskOwnedObjects(address, typeFilter);
+    } catch (err) {
+      console.error(`[Kiosk] Scan failed for ${address.slice(0, 10)}... — skipping Kiosk NFTs this round:`, err);
+      kioskError = true;
+    }
   }
 
   // 3. Merge, dedupe by objectId
@@ -364,7 +370,7 @@ export async function getOwnedObjects(
     }
   }
 
-  return merged;
+  return { objects: merged, kioskError };
 }
 
 // ─── Verify VOXX ownership (direct or kiosk) ────────────────────
@@ -374,7 +380,7 @@ export async function verifyVoxxOwnership(
 ): Promise<boolean> {
   try {
     // Check direct ownership first
-    const owned = await getOwnedObjects(address, VOXX_TYPE, false);
+    const { objects: owned } = await getOwnedObjects(address, VOXX_TYPE, false);
     return owned.some((obj) => {
       const data = (obj as Record<string, unknown>).data as Record<string, unknown>;
       return data?.objectId === objectId;

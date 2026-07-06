@@ -98,7 +98,7 @@ export function WaitingList({ authToken }) {
           }}
         >
           <span className="hud-label text-center" style={{ fontSize: '0.58rem' }}>#</span>
-          <span className="hud-label" style={{ fontSize: '0.58rem' }}>APPLICANT</span>
+          <span className="hud-label" style={{ fontSize: '0.58rem' }}>CITIZEN</span>
           <span className="hud-label text-center" style={{ fontSize: '0.58rem' }}>CRED</span>
           <span className="hud-label text-center" style={{ fontSize: '0.58rem' }}>REGISTERED</span>
           <span className="hud-label text-right" style={{ fontSize: '0.58rem' }}>CREDITS</span>
@@ -138,10 +138,10 @@ export function WaitingList({ authToken }) {
                   )}
                 </div>
 
-                {/* Address */}
+                {/* Name */}
                 <div className="flex items-center min-w-0">
                   <span className="mono truncate" style={{ color: isTop3 ? '#fff' : 'rgba(0,255,204,0.7)', fontSize: '0.7rem' }}>
-                    {entry.address}
+                    {entry.display_name || entry.address}
                   </span>
                 </div>
 

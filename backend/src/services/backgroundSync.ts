@@ -39,7 +39,7 @@ async function syncAllAddresses(): Promise<void> {
     for (const address of addresses) {
       try {
         // Fetch owned NFTs from chain
-        const ownedNfts = await getOwnedObjects(address, VOXX_TYPE, true);
+        const { objects: ownedNfts, kioskError } = await getOwnedObjects(address, VOXX_TYPE, true);
         const ownedSet = new Set<string>();
         const ownedMeta = new Map<string, { name: string; image_url: string | null }>();
 
@@ -89,20 +89,25 @@ async function syncAllAddresses(): Promise<void> {
           }
         }
 
-        // Pause sold/transferred NFTs
-        for (const [objId, stake] of existingMap) {
-          if (!ownedSet.has(objId) && stake.status === 'active') {
-            let sessionSeconds = 0.0;
-            if (stake.current_session_start) {
-              const sessionStart = new Date(stake.current_session_start);
-              sessionSeconds = Math.max(0.0, (now.getTime() - sessionStart.getTime()) / 1000);
+        // Pause sold/transferred NFTs — but only if Kiosk scan succeeded.
+        // If Kiosk scan failed, we might have missed NFTs → don't pause.
+        if (!kioskError) {
+          for (const [objId, stake] of existingMap) {
+            if (!ownedSet.has(objId) && stake.status === 'active') {
+              let sessionSeconds = 0.0;
+              if (stake.current_session_start) {
+                const sessionStart = new Date(stake.current_session_start);
+                sessionSeconds = Math.max(0.0, (now.getTime() - sessionStart.getTime()) / 1000);
+              }
+              stake.status = 'paused';
+              stake.current_session_start = null;
+              stake.total_staked_seconds = (stake.total_staked_seconds || 0.0) + sessionSeconds;
+              stake.last_synced = nowIso;
+              await stake.save();
             }
-            stake.status = 'paused';
-            stake.current_session_start = null;
-            stake.total_staked_seconds = (stake.total_staked_seconds || 0.0) + sessionSeconds;
-            stake.last_synced = nowIso;
-            await stake.save();
           }
+        } else if (existingMap.size > 0 && ownedSet.size === 0) {
+          console.warn(`[BG Sync] Kiosk scan failed for ${address.slice(0, 10)}... — 0 direct NFTs, ${existingMap.size} DB stakes preserved`);
         }
 
         updated++;

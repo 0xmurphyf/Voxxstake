@@ -1,16 +1,30 @@
 import { Router, Request, Response } from 'express';
 import { Stake } from '../models/Stake';
+import { Profile } from '../models/Profile';
 import { computeTotalActiveSeconds, computePoints, getHoldingMultiplier } from '../services/staking';
 import { IStake } from '../models/Stake';
 
 const router = Router();
 
 /**
+ * Format address to a short display name.
+ * If the user has set a profile name, show "Name (0xABC...)".
+ * Otherwise show "0xABC...".
+ */
+function formatDisplayName(address: string, profileName?: string | null): string {
+  const short = `0x${address.slice(2, 5)}`;
+  if (profileName && profileName.trim()) {
+    return `${profileName.trim()} (${short})`;
+  }
+  return short;
+}
+
+/**
  * GET /api/ranking
  *
  * Public endpoint — no auth required.
  * Returns all active stakers ranked by total citizenship credits, with:
- *   - address (masked for privacy)
+ *   - display_name (profile name + short address, or just short address)
  *   - credential count
  *   - holding multiplier
  *   - total credits
@@ -32,6 +46,14 @@ router.get('/', async (_req: Request, res: Response) => {
       byAddress.set(s.address, existing);
     }
 
+    // Fetch all profiles for display names (batch query)
+    const addressList = Array.from(byAddress.keys());
+    const profiles = await Profile.find({ address: { $in: addressList } }).lean();
+    const nameMap = new Map<string, string | null>();
+    for (const p of profiles) {
+      nameMap.set(p.address, p.name || null);
+    }
+
     // Build ranking entries
     const entries = Array.from(byAddress.entries()).map(([address, stakes]) => {
       const nftCount = stakes.length;
@@ -49,6 +71,7 @@ router.get('/', async (_req: Request, res: Response) => {
 
       return {
         address: `${address.slice(0, 8)}...${address.slice(-6)}`,
+        display_name: formatDisplayName(address, nameMap.get(address)),
         credential_count: nftCount,
         multiplier,
         total_credits: totalCredits,
