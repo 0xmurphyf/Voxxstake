@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
-import { ListNumbers, Trophy, Cube, Lightning } from '@phosphor-icons/react';
+import { ListNumbers, Trophy, Cube, Lightning, Clock } from '@phosphor-icons/react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
 const API = `${BACKEND_URL}/api`;
