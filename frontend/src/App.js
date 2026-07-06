@@ -308,7 +308,6 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
             stats={stats}
             walletAddress={wallet.account?.address}
             authToken={authToken}
-            balance={balance}
             onProfileSaved={() => setProfileVersion(v => v + 1)}
           />
 
