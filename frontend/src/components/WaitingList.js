@@ -14,18 +14,21 @@ function formatDuration(days) {
   return `${days.toFixed(1)}d`;
 }
 
-export function WaitingList({ authToken }) {
+export function WaitingList({ authToken, walletAddress }) {
   const [rankings, setRankings] = useState([]);
   const [totalStakers, setTotalStakers] = useState(0);
+  const [currentUserRank, setCurrentUserRank] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const fetchRankings = useCallback(async () => {
     try {
       setLoading(true);
-      const r = await axios.get(`${API}/ranking`);
+      const params = walletAddress ? { address: walletAddress } : {};
+      const r = await axios.get(`${API}/ranking`, { params });
       setRankings(r.data.rankings || []);
       setTotalStakers(r.data.total_stakers || 0);
+      setCurrentUserRank(r.data.current_user_rank || null);
       setError(null);
     } catch (err) {
       console.error('Failed to fetch rankings:', err);
@@ -33,7 +36,7 @@ export function WaitingList({ authToken }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [walletAddress]);
 
   useEffect(() => {
     fetchRankings();
@@ -82,9 +85,16 @@ export function WaitingList({ authToken }) {
           <ListNumbers size={16} weight="bold" style={{ color: '#00FFCC' }} />
           <span className="hud-value" style={{ fontSize: '0.78rem' }}>CITIZENSHIP WAITING LIST</span>
         </div>
-        <span className="mono" style={{ color: 'rgba(0,255,204,0.6)', fontSize: '0.7rem' }}>
-          {totalStakers} REGISTERED APPLICANTS
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {currentUserRank && (
+            <span className="mono" style={{ color: '#FFD700', fontSize: '0.7rem' }}>
+              YOUR RANK: #{currentUserRank}
+            </span>
+          )}
+          <span className="mono" style={{ color: 'rgba(0,255,204,0.6)', fontSize: '0.7rem' }}>
+            {totalStakers} REGISTERED APPLICANTS
+          </span>
+        </div>
       </div>
 
       {/* Table */}
@@ -108,6 +118,8 @@ export function WaitingList({ authToken }) {
           {rankings.map((entry, idx) => {
             const rank = idx + 1;
             const isTop3 = rank <= 3;
+            const isCurrentUser = currentUserRank === rank;
+
             return (
               <div
                 key={idx}
@@ -115,11 +127,18 @@ export function WaitingList({ authToken }) {
                 style={{
                   gridTemplateColumns: cols,
                   borderBottom: '1px solid rgba(0,255,204,0.06)',
-                  background: idx % 2 === 0 ? 'transparent' : 'rgba(0,255,204,0.02)',
+                  background: isCurrentUser
+                    ? 'rgba(255,215,0,0.08)'
+                    : idx % 2 === 0 ? 'transparent' : 'rgba(0,255,204,0.02)',
+                  borderLeft: isCurrentUser ? '3px solid #FFD700' : '3px solid transparent',
                   transition: 'background 0.2s',
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(0,255,204,0.05)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = idx % 2 === 0 ? 'transparent' : 'rgba(0,255,204,0.02)'; }}
+                onMouseEnter={(e) => {
+                  if (!isCurrentUser) e.currentTarget.style.background = 'rgba(0,255,204,0.05)';
+                }}
+                onMouseLeave={(e) => {
+                  if (!isCurrentUser) e.currentTarget.style.background = idx % 2 === 0 ? 'transparent' : 'rgba(0,255,204,0.02)';
+                }}
               >
                 {/* Rank */}
                 <div className="flex items-center justify-center">
@@ -132,7 +151,11 @@ export function WaitingList({ authToken }) {
                       }}
                     />
                   ) : (
-                    <span className="mono" style={{ color: 'rgba(0,255,204,0.5)', fontSize: '0.7rem' }}>
+                    <span className="mono" style={{
+                      color: isCurrentUser ? '#FFD700' : 'rgba(0,255,204,0.5)',
+                      fontSize: '0.7rem',
+                      fontWeight: isCurrentUser ? 700 : 400,
+                    }}>
                       {rank}
                     </span>
                   )}
@@ -140,8 +163,13 @@ export function WaitingList({ authToken }) {
 
                 {/* Name */}
                 <div className="flex items-center min-w-0">
-                  <span className="mono truncate" style={{ color: isTop3 ? '#fff' : 'rgba(0,255,204,0.7)', fontSize: '0.7rem' }}>
-                    {entry.display_name || entry.address}
+                  <span className="mono truncate" style={{
+                    color: isCurrentUser ? '#FFD700' : isTop3 ? '#fff' : 'rgba(0,255,204,0.7)',
+                    fontSize: '0.7rem',
+                    fontWeight: isCurrentUser ? 600 : 400,
+                  }}>
+                    {entry.display_name || entry.display_address}
+                    {isCurrentUser && <span style={{ marginLeft: 6, fontSize: '0.55rem', color: '#FFD700' }}>◀ YOU</span>}
                   </span>
                 </div>
 

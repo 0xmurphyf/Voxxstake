@@ -222,7 +222,7 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
 
           {activeTab === 'waiting' && (
             <div data-testid="waiting-tab-content" className="mt-6">
-              <WaitingList authToken={authToken} />
+              <WaitingList authToken={authToken} walletAddress={wallet.account?.address} />
             </div>
           )}
         </>

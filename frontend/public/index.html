@@ -1180,7 +1180,7 @@
             // Type character by character + random tiny jitter to simulate real terminal
             for (let i = 0; i < pathName.length; i++) {
                 pathTextEl.textContent += pathName.charAt(i);
-                if (!prefersReducedMotion && pathName.charAt(i) !== '_') SFX.type();
+                if (!prefersReducedMotion && pathName.charAt(i) !== '_') SFX.bootType();
                 await new Promise(r => setTimeout(r, prefersReducedMotion ? 0 : (22 + Math.random() * 18)));
             }
             await new Promise(r => setTimeout(r, 300));

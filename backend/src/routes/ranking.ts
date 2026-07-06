@@ -20,16 +20,19 @@ function formatDisplayName(address: string, profileName?: string | null): string
 }
 
 /**
- * GET /api/ranking
+ * GET /api/ranking?address=<optional>
  *
  * Public endpoint — no auth required.
  * Returns ALL applicants (including those who registered but currently
  * hold zero NFTs — their paused stakes still count as "applied").
  * Ranked by total citizenship credits.
+ *
+ * If ?address= is provided, the response includes current_user_rank.
  */
-router.get('/', async (_req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
     const now = new Date();
+    const queryAddress = (req.query.address as string || '').toLowerCase();
 
     // Get ALL stakes (active + paused) — every address that ever registered
     const allStakes = await Stake.find({}).lean();
@@ -68,7 +71,8 @@ router.get('/', async (_req: Request, res: Response) => {
       }
 
       return {
-        address: `${address.slice(0, 8)}...${address.slice(-6)}`,
+        address,
+        display_address: `${address.slice(0, 8)}...${address.slice(-6)}`,
         display_name: formatDisplayName(address, nameMap.get(address)),
         credential_count: nftCount,
         multiplier,
@@ -80,9 +84,20 @@ router.get('/', async (_req: Request, res: Response) => {
     // Sort by total credits descending
     entries.sort((a, b) => b.total_credits - a.total_credits);
 
+    // Find current user's rank if address provided
+    let currentUserRank: number | null = null;
+    if (queryAddress) {
+      const idx = entries.findIndex(e => e.address === queryAddress);
+      currentUserRank = idx >= 0 ? idx + 1 : null;
+    }
+
+    // Strip full address from public response
+    const publicEntries = entries.map(({ address: _a, ...rest }) => rest);
+
     res.json({
       total_stakers: entries.length,
-      rankings: entries,
+      current_user_rank: currentUserRank,
+      rankings: publicEntries,
     });
   } catch (err) {
     console.error('Ranking error:', err);
