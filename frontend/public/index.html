@@ -1107,11 +1107,10 @@
                         target.appendChild(document.createTextNode(ch));
                         typedChars++;
                         updateProgress();
+                        if (ch !== ' ') SFX.bootType();
                         await new Promise(r => setTimeout(r, charSpeed));
                     }
                 }
-                // Soft line-feed tick instead of per-character beep (avoids audio crackle)
-                SFX.nav();
                 await new Promise(r => setTimeout(r, 90));
             }
 
@@ -1233,6 +1232,8 @@
                 nav: () => beep({ freq: 340, duration: 0.07, type: 'sine', volume: 0.03 }),
                 alarm: () => beep({ freq: 220, duration: 0.18, type: 'sawtooth', volume: 0.045 }),
                 boot: () => beep({ freq: 180, duration: 0.25, type: 'triangle', volume: 0.03 }),
+                /** Boot sequence typing — low sine blip, no crackle even at 9ms intervals */
+                bootType: () => beep({ freq: 480, duration: 0.012, type: 'sine', volume: 0.018 }),
                 psaAlert: () => {
                     beep({ freq: 1180, duration: 0.09, type: 'square', volume: 0.05 });
                     setTimeout(() => beep({ freq: 860, duration: 0.13, type: 'square', volume: 0.045 }), 90);

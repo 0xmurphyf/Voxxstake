@@ -23,19 +23,16 @@ function formatDisplayName(address: string, profileName?: string | null): string
  * GET /api/ranking
  *
  * Public endpoint — no auth required.
- * Returns all active stakers ranked by total citizenship credits, with:
- *   - display_name (profile name + short address, or just short address)
- *   - credential count
- *   - holding multiplier
- *   - total credits
- *   - registration duration (longest active credential)
+ * Returns ALL applicants (including those who registered but currently
+ * hold zero NFTs — their paused stakes still count as "applied").
+ * Ranked by total citizenship credits.
  */
 router.get('/', async (_req: Request, res: Response) => {
   try {
     const now = new Date();
 
-    // Get all active stakes grouped by address
-    const allStakes = await Stake.find({ status: 'active' }).lean();
+    // Get ALL stakes (active + paused) — every address that ever registered
+    const allStakes = await Stake.find({}).lean();
 
     // Group by address
     const byAddress = new Map<string, IStake[]>();
@@ -56,7 +53,8 @@ router.get('/', async (_req: Request, res: Response) => {
 
     // Build ranking entries
     const entries = Array.from(byAddress.entries()).map(([address, stakes]) => {
-      const nftCount = stakes.length;
+      const activeStakes = stakes.filter(s => s.status === 'active');
+      const nftCount = activeStakes.length;
       const multiplier = getHoldingMultiplier(nftCount);
 
       let totalCredits = 0;
