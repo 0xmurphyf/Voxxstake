@@ -251,7 +251,7 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
               }}>
                 <h2 className="term-header" style={{ marginBottom: 8 }}>IDENTITY REGISTRATION</h2>
                 <p style={{ color: 'rgba(0,255,204,0.6)', fontSize: '0.75rem', marginBottom: 20 }}>
-                  Welcome to the Neoterra Citizenship Registry. Choose a name to be known by in the Waiting List.
+                  Your identity has been verified. Register a citizen alias to appear on the Waiting List.
                 </p>
                 <input
                   type="text"
