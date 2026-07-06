@@ -6,11 +6,6 @@ const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
 const API = `${BACKEND_URL}/api`;
 const VOXX_PLACEHOLDER = 'https://images.pexels.com/photos/9203122/pexels-photo-9203122.jpeg?auto=compress&cs=tinysrgb&w=400';
 
-/** Get cached image URL through backend proxy */
-function getImageUrl(objectId) {
-  return `${BACKEND_URL}/api/image/${objectId}`;
-}
-
 function formatDuration(days) {
   if (days < 1) {
     const hours = days * 24;
@@ -117,7 +112,7 @@ export function IDCard({ positions, stats, walletAddress, authToken, balance }) 
   }, [pfpObjectId, pfpUrl, verifyPfp]);
 
   const selectPfp = (position) => {
-    const imgUrl = getImageUrl(position.object_id);
+    const imgUrl = position.image_url || VOXX_PLACEHOLDER;
     setPfpUrl(imgUrl);
     setPfpObjectId(position.object_id);
     setPfpValid(true);
@@ -167,7 +162,7 @@ export function IDCard({ positions, stats, walletAddress, authToken, balance }) 
             title={activePositions.length > 0 ? 'Click to change PFP' : 'No credentials to use as PFP'}
           >
             {pfpObjectId && pfpValid ? (
-              <img src={getImageUrl(pfpObjectId)} alt="PFP" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <img src={pfpUrl || VOXX_PLACEHOLDER} alt="PFP" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             ) : (
               <div style={{
                 width: '100%', height: '100%',
@@ -338,7 +333,7 @@ export function IDCard({ positions, stats, walletAddress, authToken, balance }) 
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', maxHeight: 320, overflowY: 'auto', padding: '2px 0' }}>
             {pfpSlice.map((pos) => {
-              const imgSrc = getImageUrl(pos.object_id);
+              const imgSrc = pos.image_url || VOXX_PLACEHOLDER;
               const isSelected = pfpObjectId === pos.object_id;
               return (
                 <div

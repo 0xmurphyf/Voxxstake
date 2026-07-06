@@ -1,13 +1,7 @@
 import React from 'react';
 import { Cube, Pause, Lightning } from '@phosphor-icons/react';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
 const VOXX_PLACEHOLDER = 'https://images.pexels.com/photos/9203122/pexels-photo-9203122.jpeg?auto=compress&cs=tinysrgb&w=300';
-
-/** Get cached image URL through backend proxy */
-function getImageUrl(objectId) {
-  return `${BACKEND_URL}/api/image/${objectId}`;
-}
 
 function formatDuration(days) {
   if (days < 1) {
@@ -46,7 +40,7 @@ export function NFTList({ positions, loading }) {
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3" data-testid="nft-list">
       {positions.map((position) => {
         const isActive = position.status === 'active';
-        const imgSrc = getImageUrl(position.object_id);
+        const imgSrc = position.image_url || VOXX_PLACEHOLDER;
 
         return (
           <div
