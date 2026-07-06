@@ -1,15 +1,15 @@
 import { IStake } from '../models/Stake';
-import { StakingPosition, POINTS_PER_NFT_PER_HOUR, HOLDING_MULTIPLIER_STEP, HOLDING_MULTIPLIER_BONUS } from '../types';
+import { StakingPosition, POINTS_PER_NFT_PER_HOUR, HOLDING_MULTIPLIER_INCREMENT } from '../types';
 
 /**
  * Calculate holding multiplier based on number of NFTs held.
  * Base: 1.0x
- * +0.1x for every 10 NFTs (≥10 → 1.1x, ≥20 → 1.2x, etc.)
+ * +0.001x per NFT held, no upper limit.
+ * Examples: 1 NFT → 1.0x, 2 NFTs → 1.001x, 20 → 1.019x, 100 → 1.099x
  */
 export function getHoldingMultiplier(nftCount: number): number {
-  if (nftCount < HOLDING_MULTIPLIER_STEP) return 1.0;
-  const steps = Math.floor(nftCount / HOLDING_MULTIPLIER_STEP);
-  return 1.0 + steps * HOLDING_MULTIPLIER_BONUS;
+  if (nftCount <= 1) return 1.0;
+  return 1.0 + (nftCount - 1) * HOLDING_MULTIPLIER_INCREMENT;
 }
 
 /**

@@ -6,7 +6,6 @@ import { ConnectButton } from '@suiet/wallet-kit';
 import { useWalletAuth } from './hooks/useWalletAuth';
 import { useStaking } from './hooks/useStaking';
 import { useSuiBalance } from './hooks/useSuiBalance';
-import { StatsCards } from './components/StatsCards';
 import { NFTList } from './components/NFTList';
 import { NFTDetail } from './components/NFTDetail';
 import { WaitingList } from './components/WaitingList';
@@ -203,9 +202,6 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
             authToken={authToken}
             balance={balance}
           />
-
-          {/* Stats Cards */}
-          <StatsCards stats={stats} />
 
           {/* Tab Navigation */}
           <div className="tab-nav" data-testid="tab-navigation">

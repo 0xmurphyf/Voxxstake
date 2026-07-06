@@ -9,7 +9,7 @@ export interface StakingPosition {
   status: 'active' | 'paused';
   lore_points: number;
   duration_days: number;
-  /** Holding multiplier (1.0 base, +0.1 per 10 NFTs held) */
+  /** Holding multiplier (1.0 base, +0.001 per NFT, no upper limit) */
   holding_multiplier: number;
   is_owned: boolean;
 }
@@ -79,11 +79,8 @@ export const POINTS_PER_NFT_PER_HOUR = 1.0;
 /** Points per NFT per day = 24 */
 export const POINTS_PER_NFT_PER_DAY = POINTS_PER_NFT_PER_HOUR * 24;
 
-/** Number of NFTs per 0.1x multiplier step */
-export const HOLDING_MULTIPLIER_STEP = 10;
-
-/** Max bonus per step */
-export const HOLDING_MULTIPLIER_BONUS = 0.1;
+/** Per-NFT multiplier increment (0.001x per NFT, no upper limit) */
+export const HOLDING_MULTIPLIER_INCREMENT = 0.001;
 
 export const NONCE_EXPIRY_SECONDS = 300;
 export const JWT_EXPIRY_HOURS = 24;

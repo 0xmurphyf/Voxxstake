@@ -22,8 +22,8 @@ const ProfileSchema = new Schema<IProfile>(
 ProfileSchema.set('toJSON', {
   transform: (_doc, ret) => {
     ret.id = ret._id?.toString();
-    delete ret._id;
-    delete ret.__v;
+    delete (ret as any)._id;
+    delete (ret as any).__v;
     return ret;
   },
 });
