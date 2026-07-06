@@ -1107,10 +1107,11 @@
                         target.appendChild(document.createTextNode(ch));
                         typedChars++;
                         updateProgress();
-                        if (ch !== ' ') SFX.type();
                         await new Promise(r => setTimeout(r, charSpeed));
                     }
                 }
+                // Soft line-feed tick instead of per-character beep (avoids audio crackle)
+                SFX.nav();
                 await new Promise(r => setTimeout(r, 90));
             }
 
@@ -1474,13 +1475,15 @@
             // ===== Phase: Boot Sequence =====
             await runBootSequence();
 
-            // ===== Phase: initial screen load =====
+            // ===== Phase: initial screen load (no PSA, direct display) =====
             SFX.boot();
 
             await new Promise(r => setTimeout(r, 500));
 
-            const initialPath = document.querySelector('.voxx-sidebar a.active').getAttribute('data-path');
-            await typePathAndShowScreen(initialPath, 'screen-directive');
+            // Directly show FILE_00_DIRECTIVE without typewriter PSA
+            const pathTextEl = document.getElementById('path-text');
+            pathTextEl.textContent = 'FILE_00_DIRECTIVE';
+            document.getElementById('screen-directive').classList.add('active');
         });
 
         // Root Terminal also supports Esc to close + basic focus trap
