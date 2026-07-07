@@ -522,7 +522,9 @@
         .filez-results table { border-collapse: collapse; width: 100%; }
         .filez-results th, .filez-results td { border: 1px solid rgba(0,255,255,0.18); padding: 4px 8px; text-align: left; white-space: nowrap; color: #cfe; }
         /* header sticks to the bottom of the (flipped) scrollport = visually the TOP */
-        .filez-results th { background: rgba(0,255,255,0.08); color: #0ff; position: sticky; bottom: 0; }
+        .filez-results th { background: rgba(0,255,255,0.08); color: #0ff; position: sticky; bottom: 0; cursor: pointer; user-select: none; white-space: nowrap; }
+        .filez-results th:hover { background: rgba(0,255,255,0.18); color: #fff; }
+        .filez-results th.sorted { color: #fff; text-shadow: 0 0 6px rgba(0,255,255,0.7); }
         .filez-results tr:nth-child(even) td { background: rgba(0,255,255,0.03); }
         .term-input { background: #0a0a0a; border: 1px solid #333; color: #0ff; font-family: inherit; padding: 6px 10px; border-radius: 4px; }
         .term-input:focus { outline: none; border-color: #0ff; }
@@ -1629,6 +1631,9 @@
 
         // ─── FILE Z (CLASSIFIED) — gated by root-terminal token (in-memory only) ───
         let rootToken = null;
+        let filezRows = [];        // last queried rows (for client-side sorting)
+        let filezSortKey = null;   // current sort column
+        let filezSortDir = 'asc';  // 'asc' | 'desc'
 
         function unlockFileZ() {
             const tab = document.getElementById('tab-z');
@@ -1643,6 +1648,9 @@
 
         function lockFileZ() {
             rootToken = null;
+            filezRows = [];
+            filezSortKey = null;
+            filezSortDir = 'asc';
             const tab = document.getElementById('tab-z');
             tab.classList.add('locked');
             tab.classList.remove('unlocked');
@@ -1666,11 +1674,38 @@
             if (typeof v === 'object') return JSON.stringify(v);
             return String(v);
         }
-        function renderFileZTable(rows) {
+        function compareVals(a, b) {
+            const na = (a === null || a === undefined || a === '' || (typeof a === 'object' && !(a instanceof Date)));
+            const nb = (b === null || b === undefined || b === '' || (typeof b === 'object' && !(b instanceof Date)));
+            if (na && nb) return 0;
+            if (na) return -1;
+            if (nb) return 1;
+            const as = String(a).trim(), bs = String(b).trim();
+            const an = Number(as), bn = Number(bs);
+            const bothNum = as !== '' && bs !== '' && !Number.isNaN(an) && !Number.isNaN(bn);
+            if (bothNum) return an - bn;
+            return as.localeCompare(bs, undefined, { sensitivity: 'base', numeric: true });
+        }
+
+        function sortFileZRows(rows, key, dir) {
+            if (!key) return rows.slice();
+            const arr = rows.slice();
+            arr.sort((x, y) => {
+                const c = compareVals(x[key], y[key]);
+                return dir === 'asc' ? c : -c;
+            });
+            return arr;
+        }
+
+        function renderFileZTable(rows, sortKey, sortDir) {
             if (!rows || !rows.length) return '<span style="color:#888;">NO RECORDS.</span>';
             const cols = Object.keys(rows[0]).filter(k => k !== '__v');
             let html = '<table><thead><tr>';
-            cols.forEach(c => { html += '<th>' + escapeHtml(c) + '</th>'; });
+            cols.forEach(c => {
+                const active = c === sortKey;
+                const ind = active ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+                html += '<th data-key="' + escapeHtml(c) + '" class="' + (active ? 'sorted' : '') + '" title="Sort by ' + escapeHtml(c) + '">' + escapeHtml(c) + ind + '</th>';
+            });
             html += '</tr></thead><tbody>';
             rows.forEach(row => {
                 html += '<tr>';
@@ -1679,6 +1714,17 @@
             });
             html += '</tbody></table>';
             return html;
+        }
+
+        function sortFileZ(key) {
+            if (filezSortKey === key) {
+                filezSortDir = filezSortDir === 'asc' ? 'desc' : 'asc';
+            } else {
+                filezSortKey = key;
+                filezSortDir = 'asc';
+            }
+            const el = document.getElementById('filez-results');
+            if (el) el.innerHTML = renderFileZTable(sortFileZRows(filezRows, filezSortKey, filezSortDir), filezSortKey, filezSortDir);
         }
 
         async function queryFileZ() {
@@ -1704,7 +1750,10 @@
                     resultsEl.innerHTML = '<span style="color:#f55;">' + escapeHtml(data.detail || 'QUERY FAILED') + '</span>';
                     return;
                 }
-                resultsEl.innerHTML = renderFileZTable(data.rows);
+                filezRows = Array.isArray(data.rows) ? data.rows : [];
+                filezSortKey = null;
+                filezSortDir = 'asc';
+                resultsEl.innerHTML = renderFileZTable(filezRows, filezSortKey, filezSortDir);
             } catch (e) {
                 resultsEl.innerHTML = '<span style="color:#f55;">NETWORK ERROR</span>';
             }
@@ -1721,6 +1770,12 @@
             const fzLock = document.getElementById('filez-lock');
             if (fzQuery) fzQuery.addEventListener('click', queryFileZ);
             if (fzLock) fzLock.addEventListener('click', lockFileZ);
+            // Column sorting (event delegation so it survives table re-renders)
+            const fzResults = document.getElementById('filez-results');
+            if (fzResults) fzResults.addEventListener('click', (e) => {
+                const th = e.target.closest('th[data-key]');
+                if (th) sortFileZ(th.getAttribute('data-key'));
+            });
             scheduleLogoGlitch();
             scheduleSignalFlicker();
             scheduleScreenJitter();
