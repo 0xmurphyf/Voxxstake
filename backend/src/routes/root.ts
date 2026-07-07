@@ -184,3 +184,11 @@ router.get('/query', async (req: Request, res: Response) => {
 });
 
 export default router;
+
+// Startup diagnostic — logs only the configured clearance-code LENGTH (never
+// the value), so operators can confirm FILE Z is enabled without leaking it.
+if (config.rootTerminalPassword) {
+  console.log(`[root] CLASSIFIED terminal enabled (clearance code length ${config.rootTerminalPassword.length})`);
+} else {
+  console.log('[root] CLASSIFIED terminal DISABLED — set ROOT_TERMINAL_PASSWORD to enable FILE Z');
+}

@@ -50,6 +50,8 @@ export const config = {
   syncRateLimitSeconds: parseInt(process.env.SYNC_RATE_LIMIT_SEC || '60', 10),
   // Root terminal clearance password — gates the CLASSIFIED "FILE Z" data viewer.
   // MUST come from ROOT_TERMINAL_PASSWORD env var. Never hardcoded (the repo is
-  // public). If null, the root terminal endpoints fail closed (always denied).
-  rootTerminalPassword: process.env.ROOT_TERMINAL_PASSWORD || null,
+  // public). If null/empty, the root terminal endpoints fail closed (always denied).
+  // Trimmed so a trailing newline/space from how the env var was set (e.g. Railway
+  // paste) doesn't silently break the comparison.
+  rootTerminalPassword: (process.env.ROOT_TERMINAL_PASSWORD || '').trim() || null,
 };
