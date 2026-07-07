@@ -9,6 +9,38 @@ import { NONCE_EXPIRY_SECONDS, JWT_EXPIRY_HOURS, JWT_ALGORITHM } from '../types'
 
 const router = Router();
 
+// ─── Per-IP throttle for auth endpoints (nonce/verify) ──────────
+// Prevents unauthenticated DB-write amplification via /nonce spam and
+// brute-force-ish /verify hammering. Single-instance in-memory (sufficient
+// for Railway single-replica; see low-risk note about multi-instance).
+const AUTH_MIN_INTERVAL_MS = 3000;
+const authLastSeen = new Map<string, number>();
+
+function clientIp(req: Request): string {
+  const xff = req.headers['x-forwarded-for'];
+  if (typeof xff === 'string') return xff.split(',')[0].trim();
+  if (Array.isArray(xff) && xff.length > 0) return xff[0].trim();
+  return req.socket?.remoteAddress || 'unknown';
+}
+
+function authThrottle(req: Request, res: Response): boolean {
+  const ip = clientIp(req);
+  const now = Date.now();
+  const last = authLastSeen.get(ip) || 0;
+  if (now - last < AUTH_MIN_INTERVAL_MS) {
+    res
+      .status(429)
+      .json({ detail: 'Too many auth requests, slow down.', retry_after_seconds: Math.ceil(AUTH_MIN_INTERVAL_MS / 1000) });
+    return false;
+  }
+  authLastSeen.set(ip, now);
+  if (authLastSeen.size % 100 === 0) {
+    const cutoff = now - AUTH_MIN_INTERVAL_MS * 2;
+    for (const [k, v] of authLastSeen) if (v < cutoff) authLastSeen.delete(k);
+  }
+  return true;
+}
+
 /**
  * Normalize Sui address to lowercase 0x-prefixed.
  */
@@ -27,6 +59,8 @@ function normalizeAddress(addr: string): string {
  */
 router.post('/nonce', async (req: Request, res: Response) => {
   try {
+    if (!authThrottle(req, res)) return;
+
     const { address } = req.body;
     if (!address) {
       res.status(400).json({ detail: 'Address is required' });
@@ -63,6 +97,8 @@ router.post('/nonce', async (req: Request, res: Response) => {
  */
 router.post('/verify', async (req: Request, res: Response) => {
   try {
+    if (!authThrottle(req, res)) return;
+
     const { address, nonce, signature, bytes } = req.body;
     if (!address || !nonce || !signature || !bytes) {
       res.status(400).json({ detail: 'Missing required fields' });

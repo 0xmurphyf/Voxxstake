@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import cors from 'cors';
+import helmet from 'helmet';
 import { config } from './config';
 import { connectDB } from './db';
 import authRouter from './routes/auth';
@@ -18,6 +19,21 @@ async function main() {
   await connectDB();
 
   const app = express();
+
+  // Trust the Railway proxy so req.protocol/req.ip reflect the real client
+  // (needed for HSTS behind TLS-terminating proxy and correct client IPs).
+  app.set('trust proxy', 1);
+
+  // Security headers. CSP/COEP/COOP disabled to avoid breaking the CRA inline
+  // runtime and cross-origin image loading; frameguard / HSTS / noSniff /
+  // referrer-policy still apply.
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false,
+      crossOriginOpenerPolicy: false,
+    })
+  );
 
   // CORS — production must explicitly set CORS_ORIGINS
   const corsOrigin = config.corsOrigins.length === 0 ? false : config.corsOrigins;
