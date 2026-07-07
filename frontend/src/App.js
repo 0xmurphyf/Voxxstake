@@ -25,7 +25,7 @@ const API = `${BACKEND_URL}/api`;
    ============================================================ */
 function HomePage({ authToken, login, isAuthenticating, authError, logout, loadToken, balance }) {
   const wallet = useWallet();
-  const { positions, stats, sellAlerts, loading, syncing } = useStaking(authToken);
+  const { positions, stats, sellAlerts, loading, syncing, syncStakes } = useStaking(authToken);
   const [activeTab, setActiveTab] = useState('nfts');
   const [profileVersion, setProfileVersion] = useState(0);
   const [tabsEnabled, setTabsEnabled] = useState(false);
@@ -302,6 +302,8 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
             stats={stats}
             walletAddress={wallet.account?.address}
             authToken={authToken}
+            syncStakes={syncStakes}
+            syncing={syncing}
             onProfileSaved={() => setProfileVersion(v => v + 1)}
           />
 

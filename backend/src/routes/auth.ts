@@ -149,9 +149,15 @@ router.post('/verify', async (req: Request, res: Response) => {
 
     // Ensure a Profile exists for every authenticated user (even without NFTs).
     // upsert: creates if not exists, no-op otherwise.
+    // last_ip / last_seen_at are refreshed on every successful login ($set) so the
+    // most-recent client IP is always recorded for anti-abuse / fraud review.
+    const clientAddress = clientIp(req);
     await Profile.findOneAndUpdate(
       { address: normalized },
-      { $setOnInsert: { address: normalized, name: '', updated_at: new Date().toISOString() } },
+      {
+        $setOnInsert: { address: normalized, name: '', updated_at: new Date().toISOString() },
+        $set: { last_ip: clientAddress, last_seen_at: new Date().toISOString() },
+      },
       { upsert: true }
     );
 

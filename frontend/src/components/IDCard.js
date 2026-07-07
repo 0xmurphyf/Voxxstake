@@ -15,7 +15,7 @@ function formatDuration(days) {
   return `${days.toFixed(1)}d`;
 }
 
-export function IDCard({ positions, stats, walletAddress, authToken, onProfileSaved }) {
+export function IDCard({ positions, stats, walletAddress, authToken, syncStakes, syncing, onProfileSaved }) {
   const activePositions = positions?.filter(p => p.status === 'active') || [];
   const totalNfts = stats?.nft_count || activePositions.length || 0;
   const totalCredits = (stats?.total_lore_points || 0).toFixed(0);
@@ -41,6 +41,24 @@ export function IDCard({ positions, stats, walletAddress, authToken, onProfileSa
   const [nameDraft, setNameDraft] = useState('');
   const [selectingPfp, setSelectingPfp] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // NFT scan state
+  const [lastScanAt, setLastScanAt] = useState(null);
+  const [scanError, setScanError] = useState(false);
+
+  const handleScan = useCallback(async () => {
+    if (!syncStakes || syncing) return;
+    setScanError(false);
+    try {
+      await syncStakes();
+      setLastScanAt(Date.now());
+      // Refresh profile + rank after a successful scan
+      loadProfile();
+      fetchRank();
+    } catch {
+      setScanError(true);
+    }
+  }, [syncStakes, syncing, loadProfile, fetchRank]);
 
   // Load profile from backend
   const loadProfile = useCallback(async () => {
@@ -319,6 +337,49 @@ export function IDCard({ positions, stats, walletAddress, authToken, onProfileSa
                 {resolvedAddress ? `${resolvedAddress.slice(0, 14)}...${resolvedAddress.slice(-6)}` : '—'}
               </p>
             </div>
+          </div>
+
+          {/* SCAN NFT button — trigger an on-chain ownership scan, results persist immediately */}
+          <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <button
+              onClick={handleScan}
+              disabled={!syncStakes || syncing}
+              data-testid="scan-nft-button"
+              style={{
+                background: syncing ? 'rgba(0,255,204,0.05)' : 'rgba(0,255,204,0.12)',
+                border: '1px solid #00FFCC',
+                color: '#00FFCC',
+                fontFamily: 'Share Tech Mono, monospace',
+                fontSize: '0.78rem',
+                letterSpacing: '0.12em',
+                padding: '9px 22px',
+                cursor: (!syncStakes || syncing) ? 'default' : 'pointer',
+                opacity: (!syncStakes) ? 0.4 : 1,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+              }}
+            >
+              {syncing ? (
+                <>
+                  <span style={{ width: 12, height: 12, border: '2px solid rgba(0,255,204,0.3)', borderTopColor: '#00FFCC', borderRadius: '50%', display: 'inline-block', animation: 'spin 1s linear infinite' }} />
+                  SCANNING...
+                </>
+              ) : (
+                <>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00FFCC" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2" />
+                    <line x1="3" y1="12" x2="21" y2="12" />
+                  </svg>
+                  SCAN NFT
+                </>
+              )}
+            </button>
+            {lastScanAt && !syncing && (
+              <span className="mono text-xs" style={{ color: scanError ? 'rgba(255,90,90,0.8)' : 'rgba(0,255,204,0.5)', fontSize: '0.68rem' }}>
+                {scanError ? 'SCAN FAILED — RETRY' : `LAST SCAN ${new Date(lastScanAt).toLocaleTimeString()}`}
+              </span>
+            )}
           </div>
         </div>
       </div>
