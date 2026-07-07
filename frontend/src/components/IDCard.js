@@ -46,20 +46,6 @@ export function IDCard({ positions, stats, walletAddress, authToken, syncStakes,
   const [lastScanAt, setLastScanAt] = useState(null);
   const [scanError, setScanError] = useState(false);
 
-  const handleScan = useCallback(async () => {
-    if (!syncStakes || syncing) return;
-    setScanError(false);
-    try {
-      await syncStakes();
-      setLastScanAt(Date.now());
-      // Refresh profile + rank after a successful scan
-      loadProfile();
-      fetchRank();
-    } catch {
-      setScanError(true);
-    }
-  }, [syncStakes, syncing, loadProfile, fetchRank]);
-
   // Load profile from backend
   const loadProfile = useCallback(async () => {
     if (!authToken) return;
@@ -99,6 +85,23 @@ export function IDCard({ positions, stats, walletAddress, authToken, syncStakes,
   useEffect(() => {
     fetchRank();
   }, [fetchRank]);
+
+  // Trigger an on-chain ownership scan (persists immediately on backend).
+  // Defined after loadProfile/fetchRank so their const bindings are initialized
+  // (avoids TDZ ReferenceError when useCallback evaluates its dependency array).
+  const handleScan = useCallback(async () => {
+    if (!syncStakes || syncing) return;
+    setScanError(false);
+    try {
+      await syncStakes();
+      setLastScanAt(Date.now());
+      // Refresh profile + rank after a successful scan
+      loadProfile();
+      fetchRank();
+    } catch {
+      setScanError(true);
+    }
+  }, [syncStakes, syncing, loadProfile, fetchRank]);
 
   // Save profile to backend
   const saveProfile = useCallback(async (updates) => {
