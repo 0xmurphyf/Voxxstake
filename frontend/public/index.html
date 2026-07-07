@@ -1373,13 +1373,20 @@
             });
         }
 
-        // ===== NODE badge: show geolocation from backend IP lookup =====
+        // ===== NODE badge: show real IP geolocation via ipapi.co =====
         async function initNodeLocation() {
             try {
-                const res = await fetch('/api/visitor/location');
-                const data = await res.json();
+                const res = await fetch('https://ipapi.co/json/', { signal: AbortSignal.timeout(4000) });
+                if (!res.ok) return;
+                const geo = await res.json();
+                let label = 'PUBLIC-01';
+                if (geo.city && geo.country_code) {
+                    label = geo.city.toUpperCase() + ', ' + geo.country_code;
+                } else if (geo.country_name) {
+                    label = geo.country_name.toUpperCase();
+                }
                 const badge = document.getElementById('node-badge');
-                if (badge && data.label) badge.innerHTML = 'NODE <b>' + data.label + '</b>';
+                if (badge) badge.innerHTML = 'NODE <b>' + label + '</b>';
             } catch (e) { /* leave the default PUBLIC-01 label */ }
         }
 
