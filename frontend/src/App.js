@@ -334,7 +334,7 @@ function HomePage({ authToken, login, isAuthenticating, authError, logout, loadT
 
           {activeTab === 'waiting' && (
             <div data-testid="waiting-tab-content" className="mt-6">
-              <WaitingList authToken={authToken} walletAddress={wallet.account?.address} profileVersion={profileVersion} />
+              <WaitingList authToken={authToken} profileVersion={profileVersion} />
             </div>
           )}
         </>

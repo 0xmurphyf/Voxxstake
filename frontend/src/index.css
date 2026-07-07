@@ -745,3 +745,34 @@ h1, h2, h3, h4, h5, h6 {
 .text-warn { color: #FFC800; }
 
 .mono { font-family: 'Share Tech Mono', monospace; }
+
+/* ===== WAITING LIST TABLE ===== */
+.waiting-header {
+  display: grid;
+  grid-template-columns: 36px 1fr 70px 80px 80px;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(0,255,204,0.12);
+  background: rgba(0,255,204,0.03);
+  font-size: 0.58rem;
+}
+
+.waiting-row {
+  display: grid;
+  grid-template-columns: 36px 1fr 70px 80px 80px;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(0,255,204,0.06);
+  transition: background 0.2s;
+}
+.waiting-row:nth-child(even) { background: rgba(0,255,204,0.02); }
+.waiting-row:hover { background: rgba(0,255,204,0.05); }
+
+/* Mobile: hide CREDITS column */
+@media (max-width: 640px) {
+  .waiting-header,
+  .waiting-row {
+    grid-template-columns: 28px 1fr 42px 56px;
+  }
+  .waiting-col-credits { display: none; }
+}
