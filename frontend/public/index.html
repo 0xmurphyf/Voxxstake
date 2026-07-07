@@ -508,15 +508,21 @@
         }
         @media (max-width: 640px) { #screen-staking #root { min-height: 65vh; } }
 
-        /* FILE Z — classified fragment, locked until root-terminal auth */
+        /* FILE Z — classified fragment, locked until root-terminal auth.
+           The sidebar tab is hidden by default and only revealed after root-terminal auth. */
+        .voxx-sidebar a#tab-z { display: none; }
         .voxx-sidebar a.locked { opacity: 0.4; cursor: not-allowed; filter: grayscale(0.4); }
         .voxx-sidebar a.unlocked { color: #0ff; text-shadow: 0 0 7px rgba(0,255,255,0.6); }
         .filez-wrap { margin-top: 18px; }
         .filez-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
-        .filez-results { overflow-x: auto; font-family: 'Share Tech Mono', monospace; font-size: 0.78rem; max-height: 62vh; }
+        /* Vertical flip trick: moves the horizontal scrollbar to the TOP of the results area.
+           The inner table is flipped back so its content stays upright. */
+        .filez-results { overflow-x: auto; font-family: 'Share Tech Mono', monospace; font-size: 0.78rem; max-height: 62vh; transform: scaleY(-1); }
+        .filez-results > table { transform: scaleY(-1); }
         .filez-results table { border-collapse: collapse; width: 100%; }
         .filez-results th, .filez-results td { border: 1px solid rgba(0,255,255,0.18); padding: 4px 8px; text-align: left; white-space: nowrap; color: #cfe; }
-        .filez-results th { background: rgba(0,255,255,0.08); color: #0ff; position: sticky; top: 0; }
+        /* header sticks to the bottom of the (flipped) scrollport = visually the TOP */
+        .filez-results th { background: rgba(0,255,255,0.08); color: #0ff; position: sticky; bottom: 0; }
         .filez-results tr:nth-child(even) td { background: rgba(0,255,255,0.03); }
         .term-input { background: #0a0a0a; border: 1px solid #333; color: #0ff; font-family: inherit; padding: 6px 10px; border-radius: 4px; }
         .term-input:focus { outline: none; border-color: #0ff; }
@@ -1630,6 +1636,7 @@
             tab.classList.add('unlocked');
             tab.setAttribute('aria-disabled', 'false');
             tab.tabIndex = 0;
+            tab.style.display = 'block'; // reveal the sidebar entry (hidden by default)
             document.getElementById('filez-locked-note').style.display = 'none';
             document.getElementById('filez-controls').style.display = 'block';
         }
@@ -1641,6 +1648,7 @@
             tab.classList.remove('unlocked');
             tab.setAttribute('aria-disabled', 'true');
             tab.tabIndex = -1;
+            tab.style.display = 'none'; // hide the sidebar entry again
             document.getElementById('filez-controls').style.display = 'none';
             document.getElementById('filez-results').innerHTML = '';
             document.getElementById('filez-locked-note').style.display = 'block';

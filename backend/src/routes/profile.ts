@@ -15,6 +15,8 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response) => {
       name: profile?.name || '',
       pfp_url: profile?.pfp_url || null,
       pfp_object_id: profile?.pfp_object_id || null,
+      last_ip: profile?.last_ip || null,
+      last_seen_at: profile?.last_seen_at || null,
     });
   } catch (err) {
     console.error('Get profile error:', err);
@@ -45,6 +47,8 @@ router.put('/', authMiddleware, async (req: AuthRequest, res: Response) => {
       name: profile?.name || '',
       pfp_url: profile?.pfp_url || null,
       pfp_object_id: profile?.pfp_object_id || null,
+      last_ip: profile?.last_ip || null,
+      last_seen_at: profile?.last_seen_at || null,
     });
   } catch (err) {
     console.error('Update profile error:', err);

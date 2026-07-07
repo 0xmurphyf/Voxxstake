@@ -36,6 +36,10 @@ export function IDCard({ positions, stats, walletAddress, authToken, syncStakes,
   const [checkingPfp, setCheckingPfp] = useState(false);
   const [backendAddress, setBackendAddress] = useState(null);
 
+  // Last-login metadata (populated by backend on every successful auth)
+  const [lastIp, setLastIp] = useState(null);
+  const [lastSeenAt, setLastSeenAt] = useState(null);
+
   // Edit state
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
@@ -53,12 +57,14 @@ export function IDCard({ positions, stats, walletAddress, authToken, syncStakes,
       const r = await axios.get(`${API}/profile`, {
         headers: { Authorization: `Bearer ${authToken}` },
       });
-      const { name, pfp_url, pfp_object_id, address } = r.data;
+      const { name, pfp_url, pfp_object_id, address, last_ip, last_seen_at } = r.data;
       setDisplayName(name || '');
       setPfpUrl(pfp_url || null);
       setPfpObjectId(pfp_object_id || null);
       setNameDraft(name || '');
       if (address) setBackendAddress(address);
+      setLastIp(last_ip || null);
+      setLastSeenAt(last_seen_at || null);
     } catch (err) {
       console.error('Failed to load profile:', err);
     }
@@ -333,12 +339,23 @@ export function IDCard({ positions, stats, walletAddress, authToken, syncStakes,
             </div>
           </div>
 
-          <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid rgba(0,255,204,0.1)', display: 'flex', gap: 32 }}>
+          <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid rgba(0,255,204,0.1)', display: 'flex', gap: 32, flexWrap: 'wrap' }}>
             <div>
               <span className="hud-label" style={{ fontSize: '0.68rem' }}>WALLET</span>
               <p className="mono" style={{ color: 'rgba(0,255,204,0.5)', fontSize: '0.95rem' }}>
                 {resolvedAddress ? `${resolvedAddress.slice(0, 14)}...${resolvedAddress.slice(-6)}` : '—'}
               </p>
+            </div>
+            <div>
+              <span className="hud-label" style={{ fontSize: '0.68rem' }}>LAST LOGIN IP</span>
+              <p className="mono" style={{ color: '#00FFCC', fontSize: '0.95rem' }}>
+                {lastIp || '—'}
+              </p>
+              {lastSeenAt && (
+                <p className="mono text-xs" style={{ color: 'rgba(0,255,204,0.4)', fontSize: '0.66rem', marginTop: 2 }}>
+                  {new Date(lastSeenAt).toLocaleString()}
+                </p>
+              )}
             </div>
           </div>
 
