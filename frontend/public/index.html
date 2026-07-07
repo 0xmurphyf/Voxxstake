@@ -1354,7 +1354,10 @@
                 const meta = document.createElement('div');
                 meta.className = 'entry-meta';
                 const fileNum = String(i + 1).padStart(3, '0');
-                meta.innerHTML = `<span>FILE ${fileNum}</span><span>LAST UPDATED: 2026.06.${String(12 + (i % 18)).padStart(2, '0')}</span>`;
+                meta.replaceChildren(
+                    Object.assign(document.createElement('span'), { textContent: `FILE ${fileNum}` }),
+                    Object.assign(document.createElement('span'), { textContent: `LAST UPDATED: 2026.06.${String(12 + (i % 18)).padStart(2, '0')}` })
+                );
                 entry.appendChild(meta);
             });
         }
@@ -1374,8 +1377,20 @@
                 else if (isLoyal) value = 90;
                 const wrap = document.createElement('div');
                 wrap.className = 'stat-bar-wrap';
-                wrap.innerHTML = `<div class="stat-bar-label"><span>${label}</span><span>${value}%</span></div>
-                    <div class="stat-bar-track"><div class="stat-bar-fill ${isLoyal ? '' : 'danger'}" style="width:${value}%"></div></div>`;
+                const labelSpan = document.createElement('span');
+                labelSpan.textContent = label;
+                const valSpan = document.createElement('span');
+                valSpan.textContent = value + '%';
+                const labelDiv = document.createElement('div');
+                labelDiv.className = 'stat-bar-label';
+                labelDiv.append(labelSpan, valSpan);
+                const fillDiv = document.createElement('div');
+                fillDiv.className = 'stat-bar-fill' + (isLoyal ? '' : ' danger');
+                fillDiv.style.width = value + '%';
+                const trackDiv = document.createElement('div');
+                trackDiv.className = 'stat-bar-track';
+                trackDiv.appendChild(fillDiv);
+                wrap.append(labelDiv, trackDiv);
                 card.querySelector('.id-body').appendChild(wrap);
             });
         }
@@ -1435,7 +1450,13 @@
                     try {
                         const label = await fetchNodeGeo(provider);
                         const badge = document.getElementById('node-badge');
-                        if (badge) badge.innerHTML = 'NODE <b>' + label + '</b>';
+                        if (badge) {
+                            badge.textContent = '';
+                            badge.appendChild(document.createTextNode('NODE '));
+                            const b = document.createElement('b');
+                            b.textContent = label;
+                            badge.appendChild(b);
+                        }
                         ok = true;
                         break;
                     } catch (e) {

@@ -339,8 +339,12 @@ router.get('/nft/:objectId', authMiddleware, async (req: AuthRequest, res: Respo
 
 export default router;
 
-// ─── DEBUG: GET /api/staking/debug/nfts?address=... ──────────────
-router.get('/debug/nfts', async (req: AuthRequest, res: Response) => {
+// ─── DEBUG: GET /api/staking/debug/nfts?address=... (admin only) ──
+router.get('/debug/nfts', authMiddleware, async (req: AuthRequest, res: Response) => {
+  if (!req.address || !config.adminAddresses.includes(req.address.toLowerCase())) {
+    res.status(403).json({ detail: 'Admin access required' });
+    return;
+  }
   const { address } = req.query as { address?: string };
   if (!address) {
     res.status(400).json({ detail: 'Missing ?address= query param' });

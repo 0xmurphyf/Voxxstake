@@ -1,18 +1,24 @@
 import dotenv from 'dotenv';
 import path from 'path';
+import crypto from 'crypto';
 
 // Try to load .env file (silently skip if not found, e.g. Railway injects env vars directly)
 dotenv.config({ path: path.resolve(__dirname, '../.env'), override: false });
 
-// ─── Security checks ──────────────────────────────────────────
-// In production, JWT_SECRET should be set via environment variable.
-// We log a warning if it's missing, but don't crash — the user can
-// set it in Railway's dashboard and redeploy.
-const DEFAULT_JWT_SECRET = 'dev-secret-key-do-not-use-in-production';
+// ─── JWT secret (security-critical) ───────────────────────────
+// Must be provided via JWT_SECRET env var in production. We NEVER fall back to
+// a hardcoded default — this repo is public, so any committed default is
+// publicly known and trivially forgeable. In production, a missing secret
+// aborts startup; in dev we generate an ephemeral random secret instead.
+let jwtSecret: string;
 const rawJwtSecret = process.env.JWT_SECRET;
-if (!rawJwtSecret && process.env.NODE_ENV === 'production') {
-  console.error('⚠️  WARNING: JWT_SECRET is not set! Using a default secret.');
-  console.error('    This is INSECURE. Set JWT_SECRET in your Railway environment variables.');
+if (rawJwtSecret) {
+  jwtSecret = rawJwtSecret;
+} else if (process.env.NODE_ENV === 'production') {
+  throw new Error('JWT_SECRET is required in production. Refusing to start with an insecure default.');
+} else {
+  jwtSecret = crypto.randomBytes(32).toString('hex');
+  console.warn('⚠️  JWT_SECRET not set — using an ephemeral dev-only secret. Set JWT_SECRET for production deployments.');
 }
 
 export const config = {
@@ -34,7 +40,7 @@ export const config = {
     .map(s => s.trim())
     .filter(Boolean),
   suiRpcTimeoutMs: parseInt(process.env.SUI_RPC_TIMEOUT_MS || '15000', 10),
-  jwtSecret: rawJwtSecret || DEFAULT_JWT_SECRET,
+  jwtSecret,
   // Admin addresses: comma-separated list of Sui addresses that can access /api/admin
   adminAddresses: (process.env.ADMIN_ADDRESSES || '')
     .split(',')
