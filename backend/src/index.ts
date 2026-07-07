@@ -44,7 +44,13 @@ async function main() {
     res.json({ status: 'ok', service: 'sui-nft-staking' });
   });
 
+  // Debug config dump — only in non-production. In production this is an
+  // unnecessary info-disclosure surface (DB name, RPC, port), so we hide it.
   apiRouter.get('/debug/config', (_req, res) => {
+    if (process.env.NODE_ENV === 'production') {
+      res.status(404).json({ detail: 'Not found' });
+      return;
+    }
     res.json({
       suiRpcUrl: config.suiRpcUrl,
       port: config.port,
@@ -74,8 +80,13 @@ async function main() {
 
   app.use(express.static(frontendBuild));
 
-  // SPA fallback
-  app.get('*', (_req, res) => {
+  // SPA fallback — but never swallow unmatched /api/* routes (otherwise a
+  // mistyped API path returns 200 + HTML, masking real 404s and confusing clients).
+  app.get('*', (req, res) => {
+    if (req.originalUrl.startsWith('/api')) {
+      res.status(404).json({ detail: 'Not found' });
+      return;
+    }
     const indexPath = path.join(frontendBuild, 'index.html');
     if (fs.existsSync(indexPath)) {
       res.sendFile(indexPath);
