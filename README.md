@@ -86,7 +86,7 @@ yarn start
 | `PORT` | `8001` | API server port |
 | `MONGO_URL` | `mongodb://localhost:27017` | MongoDB connection string |
 | `DB_NAME` | `voxxstake` | Database name |
-| `CORS_ORIGINS` | `*` | Allowed CORS origins (comma-separated) |
+| `CORS_ORIGINS` | (none → dev `*`, prod `[]`) | Allowed CORS origins (comma-separated). **Production: if unset, CORS is fully disabled (`origin:false`), not `*`.** Set explicitly in prod. |
 | `SUI_RPC_URL` | `https://fullnode.devnet.sui.io:443` | Sui RPC endpoint |
 | `JWT_SECRET` | (required) | Secret for JWT signing |
 
@@ -108,10 +108,10 @@ yarn start
 - `GET /api/staking/positions` — Alias for sync
 - `GET /api/staking/nft/:objectId` — NFT detail with metadata
 
-### Admin
-- `GET /api/admin/tiers` — List reward tiers
-- `POST /api/admin/tiers` — Update reward tiers
-- `GET /api/admin/stats` — Platform statistics
+### Admin (requires `ADMIN_ADDRESSES` — address must be in that list, not just any logged-in user)
+- `GET /api/admin/stats` — Platform statistics (total users / stakes / points)
+
+> Note: reward-tier multipliers are computed in code (`getHoldingMultiplier`), not via a mutable `/api/admin/tiers` endpoint. There is **no** public tier-modification route. The `Tier` model exists but is currently unused.
 
 ## Supported Wallets
 

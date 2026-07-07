@@ -15,8 +15,13 @@ const NonceSchema = new Schema<INonce>({
   used: { type: Boolean, default: false },
 });
 
-// TTL index: auto-delete nonces after expiry + 60s buffer
+// TTL index: auto-delete nonces shortly after expiry (defense-in-depth even
+// though /verify already rejects used/expired nonces). Prevents unbounded
+// collection growth from abandoned nonce rows.
 NonceSchema.index({ created_at: 1 }, { expireAfterSeconds: NONCE_EXPIRY_SECONDS + 60 });
+// Secondary index so the "delete existing unused nonces for this address" path
+// and the lookup-by-(address,nonce,used) path are both covered.
+NonceSchema.index({ address: 1, used: 1 });
 
 // Strip _id and __v from JSON output
 NonceSchema.set('toJSON', {
