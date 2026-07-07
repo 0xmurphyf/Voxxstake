@@ -30,6 +30,8 @@ export function IDCard({ positions, stats, walletAddress, authToken, onProfileSa
   const [displayName, setDisplayName] = useState('');
   const [pfpUrl, setPfpUrl] = useState(null);
   const [pfpObjectId, setPfpObjectId] = useState(null);
+  const [rank, setRank] = useState(null);
+  const [totalApplicants, setTotalApplicants] = useState(0);
   const [pfpValid, setPfpValid] = useState(true);
   const [checkingPfp, setCheckingPfp] = useState(false);
   const [backendAddress, setBackendAddress] = useState(null);
@@ -61,6 +63,24 @@ export function IDCard({ positions, stats, walletAddress, authToken, onProfileSa
   useEffect(() => {
     loadProfile();
   }, [loadProfile]);
+
+  // Fetch current user's rank from ranking endpoint
+  const fetchRank = useCallback(async () => {
+    if (!walletAddress && !backendAddress) return;
+    const addr = walletAddress || backendAddress;
+    if (!addr) return;
+    try {
+      const r = await axios.get(`${API}/ranking`, { params: { address: addr } });
+      setRank(r.data.current_user_rank || null);
+      setTotalApplicants(r.data.total_stakers || 0);
+    } catch (err) {
+      console.error('Failed to fetch rank:', err);
+    }
+  }, [walletAddress, backendAddress]);
+
+  useEffect(() => {
+    fetchRank();
+  }, [fetchRank]);
 
   // Save profile to backend
   const saveProfile = useCallback(async (updates) => {
@@ -273,8 +293,10 @@ export function IDCard({ positions, stats, walletAddress, authToken, onProfileSa
               <p className="mono" style={{ color: '#fff', fontSize: '0.95rem' }}>{totalNfts}</p>
             </div>
             <div>
-              <span className="hud-label" style={{ fontSize: '0.68rem' }}>STANDING</span>
-              <p className="mono" style={{ color: '#00FFCC', fontSize: '0.95rem' }}>{multiplier.toFixed(3)}x</p>
+              <span className="hud-label" style={{ fontSize: '0.68rem' }}>RANK</span>
+              <p className="mono" style={{ color: '#FFD700', fontWeight: 600, fontSize: '0.95rem' }}>
+                {rank ? `#${rank} / ${totalApplicants}` : '—'}
+              </p>
             </div>
             <div>
               <span className="hud-label" style={{ fontSize: '0.68rem' }}>ACCRUAL</span>
