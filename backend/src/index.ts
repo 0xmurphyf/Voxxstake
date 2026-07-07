@@ -13,6 +13,7 @@ import adminRouter from './routes/admin';
 import visitorRouter from './routes/visitor';
 import imageRouter from './routes/image';
 import balanceRouter from './routes/balance';
+import rootRouter from './routes/root';
 import { startBackgroundSync } from './services/backgroundSync';
 
 async function main() {
@@ -83,6 +84,7 @@ async function main() {
   apiRouter.use('/visitor', visitorRouter);
   apiRouter.use('/image', imageRouter);
   apiRouter.use('/balance', balanceRouter);
+  apiRouter.use('/root', rootRouter);
 
   app.use('/api', apiRouter);
 

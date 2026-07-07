@@ -508,6 +508,19 @@
         }
         @media (max-width: 640px) { #screen-staking #root { min-height: 65vh; } }
 
+        /* FILE Z — classified fragment, locked until root-terminal auth */
+        .voxx-sidebar a.locked { opacity: 0.4; cursor: not-allowed; filter: grayscale(0.4); }
+        .voxx-sidebar a.unlocked { color: #0ff; text-shadow: 0 0 7px rgba(0,255,255,0.6); }
+        .filez-wrap { margin-top: 18px; }
+        .filez-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+        .filez-results { overflow-x: auto; font-family: 'Share Tech Mono', monospace; font-size: 0.78rem; max-height: 62vh; }
+        .filez-results table { border-collapse: collapse; width: 100%; }
+        .filez-results th, .filez-results td { border: 1px solid rgba(0,255,255,0.18); padding: 4px 8px; text-align: left; white-space: nowrap; color: #cfe; }
+        .filez-results th { background: rgba(0,255,255,0.08); color: #0ff; position: sticky; top: 0; }
+        .filez-results tr:nth-child(even) td { background: rgba(0,255,255,0.03); }
+        .term-input { background: #0a0a0a; border: 1px solid #333; color: #0ff; font-family: inherit; padding: 6px 10px; border-radius: 4px; }
+        .term-input:focus { outline: none; border-color: #0ff; }
+
         /* Root Terminal Easter egg modal */
         .root-modal-box { background: #050505; border: 1px solid var(--c-blue); box-shadow: 0 0 40px rgba(46,155,255,0.25); text-align: left; }
         .root-modal-box h3 { color: var(--c-blue); letter-spacing: 2px; margin-bottom: 6px; font-size: 1rem; }
@@ -774,6 +787,7 @@
             <a href="#personnel" data-path="FILE_03_PERSONNEL" role="tab" aria-selected="false" aria-controls="screen-personnel" id="tab-personnel">Personnel</a>
             <a href="#record" data-path="FILE_04_SAGA_RECORD" role="tab" aria-selected="false" aria-controls="screen-record" id="tab-record">Saga Record</a>
             <a href="#staking" data-path="FILE_05_NEOTERRA" role="tab" aria-selected="false" aria-controls="screen-staking" id="tab-staking">Neoterra</a>
+            <a href="#z" data-path="FILE_0Z_CLASSIFIED" role="tab" aria-selected="false" aria-controls="screen-z" id="tab-z" class="locked" aria-disabled="true" tabindex="-1">🔒 FILE Z</a>
         </nav>
 
     <div class="voxx-main">
@@ -947,6 +961,34 @@
 
                 <div class="terminal-screen" id="screen-staking" role="tabpanel" aria-labelledby="tab-staking" tabindex="0">
                     <div id="root" style="min-height: 75vh;"></div>
+                </div>
+
+                <div class="terminal-screen" id="screen-z" role="tabpanel" aria-labelledby="tab-z" tabindex="0">
+                    <div class="chapter-header">
+                        <div class="chapter-number">FILE_0Z_CLASSIFIED</div>
+                        <h2 class="chapter-title">CLASSIFIED DATA FRAGMENT</h2>
+                    </div>
+                    <div class="filez-wrap" id="filez-locked-note">
+                        <p style="color:#f55; letter-spacing:2px;">⛔ RESTRICTED</p>
+                        <p class="mono" style="color:#888;">AUTHENTICATE VIA ROOT TERMINAL (7× LOGO) TO ACCESS THIS FRAGMENT.</p>
+                    </div>
+                    <div class="filez-wrap" id="filez-controls" style="display:none;">
+                        <div class="filez-bar">
+                            <label class="hud-label">VIEW</label>
+                            <select id="filez-view" class="term-input">
+                                <option value="profiles">profiles</option>
+                                <option value="stakes">stakes</option>
+                                <option value="nonces">nonces</option>
+                            </select>
+                            <label class="hud-label">ADDR≈</label>
+                            <input id="filez-q" class="term-input" placeholder="address contains…" style="width:220px;" />
+                            <label class="hud-label">N</label>
+                            <input id="filez-limit" class="term-input" type="number" min="1" max="100" value="50" style="width:64px;" />
+                            <button class="modal-btn" id="filez-query" style="padding:6px 18px;">QUERY</button>
+                            <button class="modal-btn no-btn" id="filez-lock" style="padding:6px 18px;">LOCK</button>
+                        </div>
+                        <div id="filez-results" class="filez-results"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1522,10 +1564,35 @@
             SFX.modalClose();
             if (lastFocusedElRoot) lastFocusedElRoot.focus();
         }
-        function submitRootCommand() {
+        async function submitRootCommand() {
             const input = document.getElementById('root-input');
             const output = document.getElementById('root-output');
-            const key = input.value.trim().toUpperCase();
+            const raw = input.value.trim();
+            if (!raw) return;
+
+            // Validate the clearance code SERVER-SIDE. The password lives only in
+            // the backend env var — it is NEVER present in this file or the bundle.
+            // We forward only what the user typed; on success we receive a short-lived token.
+            try {
+                const r = await fetch('/api/root/auth', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: raw }),
+                });
+                const data = await r.json().catch(() => ({}));
+                if (r.ok && data.ok) {
+                    rootToken = data.token;
+                    unlockFileZ();
+                    output.textContent = '> ACCESS GRANTED\n\nCLASSIFIED FRAGMENT UNLOCKED. FILE Z IS NOW ACCESSIBLE.';
+                    output.style.color = '#0ff';
+                    SFX.success();
+                    input.value = '';
+                    return;
+                }
+            } catch (e) { /* network error — fall through to local lore */ }
+
+            // Fallback: local easter-egg lore (contains no secrets)
+            const key = raw.toUpperCase();
             const lore = {
                 PROJECTAZUR: 'PROJECT AZUR — Officially logged as a routine internal review. Actual records show three consecutive protocol runaway events, each one marked [NEVER OCCURRED].',
                 AZUR: 'PROJECT AZUR — Officially logged as a routine internal review. Actual records show three consecutive protocol runaway events, each one marked [NEVER OCCURRED].',
@@ -1539,6 +1606,88 @@
                 output.style.color = '#f00';
                 SFX.alarm();
             }
+            input.value = '';
+        }
+
+        // ─── FILE Z (CLASSIFIED) — gated by root-terminal token (in-memory only) ───
+        let rootToken = null;
+
+        function unlockFileZ() {
+            const tab = document.getElementById('tab-z');
+            tab.classList.remove('locked');
+            tab.classList.add('unlocked');
+            tab.setAttribute('aria-disabled', 'false');
+            tab.tabIndex = 0;
+            document.getElementById('filez-locked-note').style.display = 'none';
+            document.getElementById('filez-controls').style.display = 'block';
+        }
+
+        function lockFileZ() {
+            rootToken = null;
+            const tab = document.getElementById('tab-z');
+            tab.classList.add('locked');
+            tab.classList.remove('unlocked');
+            tab.setAttribute('aria-disabled', 'true');
+            tab.tabIndex = -1;
+            document.getElementById('filez-controls').style.display = 'none';
+            document.getElementById('filez-results').innerHTML = '';
+            document.getElementById('filez-locked-note').style.display = 'block';
+            if (tab.classList.contains('active')) {
+                const dir = document.getElementById('tab-directive');
+                if (dir) activateTab(dir);
+            }
+        }
+
+        function escapeHtml(s) {
+            return String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+        }
+        function fmtVal(v) {
+            if (v === null || v === undefined) return '';
+            if (typeof v === 'object') return JSON.stringify(v);
+            return String(v);
+        }
+        function renderFileZTable(rows) {
+            if (!rows || !rows.length) return '<span style="color:#888;">NO RECORDS.</span>';
+            const cols = Object.keys(rows[0]).filter(k => k !== '__v');
+            let html = '<table><thead><tr>';
+            cols.forEach(c => { html += '<th>' + escapeHtml(c) + '</th>'; });
+            html += '</tr></thead><tbody>';
+            rows.forEach(row => {
+                html += '<tr>';
+                cols.forEach(c => { html += '<td>' + escapeHtml(fmtVal(row[c])) + '</td>'; });
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            return html;
+        }
+
+        async function queryFileZ() {
+            if (!rootToken) { lockFileZ(); return; }
+            const view = document.getElementById('filez-view').value;
+            const q = document.getElementById('filez-q').value.trim();
+            const limit = document.getElementById('filez-limit').value || '50';
+            const resultsEl = document.getElementById('filez-results');
+            resultsEl.innerHTML = '<span style="color:#0aa;">QUERYING…</span>';
+            try {
+                const params = new URLSearchParams({ view, limit });
+                if (q) params.set('q', q);
+                const r = await fetch('/api/root/query?' + params.toString(), {
+                    headers: { Authorization: 'Bearer ' + rootToken },
+                });
+                if (r.status === 401 || r.status === 403) {
+                    lockFileZ();
+                    resultsEl.innerHTML = '<span style="color:#f55;">SESSION EXPIRED — RE-AUTHENTICATE VIA ROOT TERMINAL.</span>';
+                    return;
+                }
+                const data = await r.json();
+                if (!r.ok) {
+                    resultsEl.innerHTML = '<span style="color:#f55;">' + escapeHtml(data.detail || 'QUERY FAILED') + '</span>';
+                    return;
+                }
+                resultsEl.innerHTML = renderFileZTable(data.rows);
+            } catch (e) {
+                resultsEl.innerHTML = '<span style="color:#f55;">NETWORK ERROR</span>';
+            }
         }
 
 
@@ -1548,6 +1697,10 @@
             initNodeLocation();
             initAccessCounter();
             initLogoEasterEgg();
+            const fzQuery = document.getElementById('filez-query');
+            const fzLock = document.getElementById('filez-lock');
+            if (fzQuery) fzQuery.addEventListener('click', queryFileZ);
+            if (fzLock) fzLock.addEventListener('click', lockFileZ);
             scheduleLogoGlitch();
             scheduleSignalFlicker();
             scheduleScreenJitter();
@@ -1595,6 +1748,12 @@
         navLinks.forEach(link => { link.tabIndex = link.classList.contains('active') ? 0 : -1; });
 
         async function activateTab(link) {
+            // FILE Z stays locked until the root terminal authenticates.
+            if (link.classList.contains('locked')) {
+                const out = document.getElementById('filez-locked-note');
+                if (out) out.style.animation = 'signal-flicker 0.4s';
+                return;
+            }
             if (isAnimating || link.classList.contains('active')) return;
             isAnimating = true;
 

@@ -48,4 +48,8 @@ export const config = {
     .filter(Boolean),
   // Rate limiting: minimum seconds between sync calls per address
   syncRateLimitSeconds: parseInt(process.env.SYNC_RATE_LIMIT_SEC || '60', 10),
+  // Root terminal clearance password — gates the CLASSIFIED "FILE Z" data viewer.
+  // MUST come from ROOT_TERMINAL_PASSWORD env var. Never hardcoded (the repo is
+  // public). If null, the root terminal endpoints fail closed (always denied).
+  rootTerminalPassword: process.env.ROOT_TERMINAL_PASSWORD || null,
 };
