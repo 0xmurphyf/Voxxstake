@@ -56,6 +56,10 @@ async function syncAllAddresses(): Promise<void> {
           });
         }
 
+        // Current holding multiplier for the address (based on owned NFT count).
+        const currentNftCount = ownedSet.size;
+        const currentMultiplier = getHoldingMultiplier(currentNftCount);
+
         const now = new Date();
         const nowIso = now.toISOString();
 
@@ -70,6 +74,14 @@ async function syncAllAddresses(): Promise<void> {
             if (existing.status === 'paused') {
               existing.status = 'active';
               existing.current_session_start = nowIso;
+              existing.session_multiplier = currentMultiplier;
+            } else {
+              // Only ever increase the frozen session multiplier.
+              const prevMult =
+                typeof existing.session_multiplier === 'number' && existing.session_multiplier > 0
+                  ? existing.session_multiplier
+                  : 1.0;
+              if (prevMult < currentMultiplier) existing.session_multiplier = currentMultiplier;
             }
             existing.name = meta.name;
             existing.image_url = meta.image_url;
@@ -85,6 +97,7 @@ async function syncAllAddresses(): Promise<void> {
               total_staked_seconds: 0.0,
               current_session_start: nowIso,
               status: 'active',
+              session_multiplier: currentMultiplier,
               last_synced: nowIso,
             });
           }
@@ -93,10 +106,7 @@ async function syncAllAddresses(): Promise<void> {
         // Pause sold/transferred NFTs — but only if Kiosk scan succeeded.
         // If Kiosk scan failed, we might have missed NFTs → don't pause.
         if (!kioskError) {
-          // Calculate current multiplier for locking points
-          const currentNftCount = ownedSet.size;
-          const currentMultiplier = getHoldingMultiplier(currentNftCount);
-
+          // currentNftCount / currentMultiplier already computed above.
           for (const [objId, stake] of existingMap) {
             if (!ownedSet.has(objId) && stake.status === 'active') {
               let sessionSeconds = 0.0;
@@ -104,9 +114,13 @@ async function syncAllAddresses(): Promise<void> {
                 const sessionStart = new Date(stake.current_session_start);
                 sessionSeconds = Math.max(0.0, (now.getTime() - sessionStart.getTime()) / 1000);
               }
-              // Lock current session's points at the CURRENT multiplier
+              // Lock current session's points at the FROZEN session multiplier
+              const lockMult =
+                typeof stake.session_multiplier === 'number' && stake.session_multiplier > 0
+                  ? stake.session_multiplier
+                  : currentMultiplier;
               const sessionHours = sessionSeconds / 3600;
-              const sessionPoints = Math.round(sessionHours * POINTS_PER_NFT_PER_HOUR * currentMultiplier);
+              const sessionPoints = Math.round(sessionHours * POINTS_PER_NFT_PER_HOUR * lockMult);
               stake.locked_points = (stake.locked_points || 0) + sessionPoints;
               stake.status = 'paused';
               stake.current_session_start = null;

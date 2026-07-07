@@ -12,6 +12,13 @@ export interface IStake extends Document {
   last_synced: string | null;
   /** Locked points from completed sessions — never decreases */
   locked_points: number;
+  /**
+   * Multiplier frozen at the start of the current active session.
+   * Only ever increases (max of historical multiplier). Used when computing
+   * live session points so credits can never decrease when the global
+   * holding multiplier drops (e.g. after selling an NFT).
+   */
+  session_multiplier: number;
 }
 
 const StakeSchema = new Schema<IStake>({
@@ -25,6 +32,7 @@ const StakeSchema = new Schema<IStake>({
   status: { type: String, enum: ['active', 'paused'], default: 'active' },
   last_synced: { type: String, default: null },
   locked_points: { type: Number, default: 0.0 },
+  session_multiplier: { type: Number, default: 1.0 },
 });
 
 StakeSchema.index({ address: 1, object_id: 1 });

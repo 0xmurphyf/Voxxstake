@@ -62,38 +62,50 @@ async function syncStakesForAddress(
   const existingMap = new Map(existingStakes.map((s) => [s.object_id, s]));
   const sellAlerts: string[] = [];
 
+  // Current holding multiplier for the user (based on owned NFT count).
+  const currentNftCount = ownedMap.size;
+  const currentMultiplier = getHoldingMultiplier(currentNftCount);
+
   // 1) For each owned NFT: ensure active stake
   for (const [objId, meta] of ownedMap) {
     const existing = existingMap.get(objId);
     if (existing) {
-      if (existing.status === 'paused') {
-        // Resume: re-bought the same NFT
-        existing.status = 'active';
-        existing.current_session_start = nowIso;
-        existing.name = meta.name;
-        existing.image_url = meta.image_url;
-        existing.last_synced = nowIso;
-        await existing.save();
-      } else {
-        // Update metadata + sync timestamp
-        existing.name = meta.name;
-        existing.image_url = meta.image_url;
-        existing.last_synced = nowIso;
-        await existing.save();
-      }
+        if (existing.status === 'paused') {
+          // Resume: re-bought the same NFT
+          existing.status = 'active';
+          existing.current_session_start = nowIso;
+          existing.session_multiplier = currentMultiplier;
+          existing.name = meta.name;
+          existing.image_url = meta.image_url;
+          existing.last_synced = nowIso;
+          await existing.save();
+        } else {
+          // Update metadata + sync timestamp, and only ever increase the
+          // frozen session multiplier so live credits never decrease.
+          const prevMult =
+            typeof existing.session_multiplier === 'number' && existing.session_multiplier > 0
+              ? existing.session_multiplier
+              : 1.0;
+          if (prevMult < currentMultiplier) existing.session_multiplier = currentMultiplier;
+          existing.name = meta.name;
+          existing.image_url = meta.image_url;
+          existing.last_synced = nowIso;
+          await existing.save();
+        }
     } else {
       // New NFT discovered
-      await Stake.create({
-        address,
-        object_id: objId,
-        name: meta.name,
-        image_url: meta.image_url,
-        created_at: nowIso,
-        total_staked_seconds: 0.0,
-        current_session_start: nowIso,
-        status: 'active',
-        last_synced: nowIso,
-      });
+        await Stake.create({
+          address,
+          object_id: objId,
+          name: meta.name,
+          image_url: meta.image_url,
+          created_at: nowIso,
+          total_staked_seconds: 0.0,
+          current_session_start: nowIso,
+          status: 'active',
+          session_multiplier: currentMultiplier,
+          last_synced: nowIso,
+        });
     }
   }
 
@@ -101,10 +113,8 @@ async function syncStakesForAddress(
   //    BUT: if Kiosk scan had an error, skip pausing — we might have missed
   //    Kiosk-owned NFTs due to RPC flakiness. They'll be cleaned up next round.
   if (!kioskError) {
-    // Calculate current multiplier for locking points
-    const currentNftCount = ownedMap.size;
-    const currentMultiplier = getHoldingMultiplier(currentNftCount);
-
+    // currentNftCount / currentMultiplier already computed above for the
+    // whole address; reuse them when locking points.
     for (const [objId, stake] of existingMap) {
       if (!ownedMap.has(objId) && stake.status === 'active') {
         let sessionSeconds = 0.0;
@@ -112,9 +122,15 @@ async function syncStakesForAddress(
           const sessionStart = new Date(stake.current_session_start);
           sessionSeconds = Math.max(0.0, (now.getTime() - sessionStart.getTime()) / 1000);
         }
-        // Lock current session's points at the CURRENT multiplier
+        // Lock current session's points at the FROZEN session multiplier
+        // (never lower than what was displayed while active) so credits
+        // never decrease when the global multiplier drops after a sale.
+        const lockMult =
+          typeof stake.session_multiplier === 'number' && stake.session_multiplier > 0
+            ? stake.session_multiplier
+            : currentMultiplier;
         const sessionHours = sessionSeconds / 3600;
-        const sessionPoints = Math.round(sessionHours * POINTS_PER_NFT_PER_HOUR * currentMultiplier);
+        const sessionPoints = Math.round(sessionHours * POINTS_PER_NFT_PER_HOUR * lockMult);
         stake.locked_points = (stake.locked_points || 0) + sessionPoints;
         stake.status = 'paused';
         stake.current_session_start = null;

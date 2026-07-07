@@ -44,13 +44,19 @@ export function computePoints(
   // Points from previously completed (paused) sessions — locked forever
   const locked = stake.locked_points || 0;
 
-  // Points from the current active session (if any)
+  // Points from the current active session (if any).
+  // Use the frozen per-session multiplier so credits never decrease when the
+  // global holding multiplier drops (e.g. after selling an NFT).
   let currentSessionPoints = 0;
   if (stake.status === 'active' && stake.current_session_start) {
     const sessionStart = new Date(stake.current_session_start);
     const sessionSeconds = Math.max(0, (now.getTime() - sessionStart.getTime()) / 1000);
     const sessionHours = sessionSeconds / 3600;
-    currentSessionPoints = Math.round(sessionHours * POINTS_PER_NFT_PER_HOUR * holdingMultiplier);
+    const sessionMult =
+      typeof stake.session_multiplier === 'number' && stake.session_multiplier > 0
+        ? stake.session_multiplier
+        : holdingMultiplier;
+    currentSessionPoints = Math.round(sessionHours * POINTS_PER_NFT_PER_HOUR * sessionMult);
   }
 
   const points = locked + currentSessionPoints;
