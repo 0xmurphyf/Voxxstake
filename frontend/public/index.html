@@ -261,8 +261,22 @@
                 white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
                 font-size: 0.75rem; letter-spacing: 2px;
             }
-            .topbar-right { display: none; }
-            .signal-flicker { top: 6px; right: 10px; font-size: 0.6rem; }
+            .topbar-right {
+                display: block;
+                font-size: 0.55rem;
+                flex-shrink: 0;
+                text-align: right;
+            }
+            .topbar-right b { font-size: 0.55rem; }
+            .signal-flicker {
+                position: static;
+                opacity: 0;
+                text-align: right;
+                padding: 0 16px 4px 0;
+                font-size: 0.55rem;
+                height: auto;
+            }
+            .signal-flicker.show { opacity: 1; }
         }
 
         @keyframes typing-cursor { from, to { border-color: transparent; } 50% { border-color: #0ff; } }
