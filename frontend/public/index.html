@@ -1373,17 +1373,13 @@
             });
         }
 
-        // ===== NODE badge: show the visitor's own timezone =====
-        // Note: a browser page can't read a visitor's real IP address directly (that
-        // needs a server or a third-party lookup). Intl gives the browser's own
-        // timezone setting directly, with no network call and no data sent anywhere.
-        function initNodeTimezone() {
+        // ===== NODE badge: show geolocation from backend IP lookup =====
+        async function initNodeLocation() {
             try {
-                const tz = Intl.DateTimeFormat().resolvedOptions().timeZone; // e.g. "Asia/Shanghai"
-                if (!tz) return;
-                const label = tz.replace(/_/g, ' ').toUpperCase();
+                const res = await fetch('/api/visitor/location');
+                const data = await res.json();
                 const badge = document.getElementById('node-badge');
-                if (badge) badge.innerHTML = 'NODE <b>' + label + '</b>';
+                if (badge && data.label) badge.innerHTML = 'NODE <b>' + data.label + '</b>';
             } catch (e) { /* leave the default PUBLIC-01 label */ }
         }
 
@@ -1460,7 +1456,7 @@
         document.addEventListener('DOMContentLoaded', async () => {
             decorateArchiveEntries();
             decorateIdCards();
-            initNodeTimezone();
+            initNodeLocation();
             initAccessCounter();
             initLogoEasterEgg();
             scheduleLogoGlitch();
