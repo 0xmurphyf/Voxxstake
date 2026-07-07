@@ -148,7 +148,6 @@
             color: #cfefef; font-size: 1rem; letter-spacing: 6px; text-transform: uppercase;
             text-shadow: 0 0 8px rgba(0,255,255,0.25);
         }
-        .topbar-title .title-mobile { display: none; }
         .topbar-copyright { color: #444; font-size: 0.58rem; letter-spacing: 1px; margin-top: 4px; }
         .voxx-motto {
             color: #666; font-size: 0.68rem; letter-spacing: 3px; text-transform: uppercase; margin-top: 5px;
@@ -254,17 +253,10 @@
             .voxx-main-scroll { overflow-y: visible; }
             .voxx-topbar { padding: 12px 16px; flex-wrap: nowrap; gap: 10px; }
             .topbar-left { gap: 8px; flex-shrink: 0; }
-            .voxx-logo { font-size: 0.9rem; letter-spacing: 3px; }
             .voxx-version-tag { display: none; }
             .topbar-center { order: 0; width: auto; flex: 1; min-width: 0; text-align: left; }
             .voxx-motto { display: none; }
             .topbar-copyright { display: none; }
-            .topbar-title {
-                white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-                font-size: 0.16rem; letter-spacing: 0.1px;
-            }
-            .topbar-title .title-desktop { display: none; }
-            .topbar-title .title-mobile { display: inline; }
             .topbar-right {
                 display: block;
                 font-size: 0.26rem;
@@ -689,8 +681,8 @@
         }
 
         @media (max-width: 768px) {
-            .voxx-logo { font-size: 0.85rem; letter-spacing: 3px; margin-left: 4px; }
-            .topbar-title { font-size: 0.15rem; letter-spacing: 0.1px; }
+            .voxx-logo { font-size: 1.3rem; letter-spacing: 5px; margin-left: 4px; }
+            .topbar-title { font-size: 0.85rem; letter-spacing: 3px; }
             .psa-ticker-item { font-size: 0.85rem; }
             .terminal-screen { padding: 14px; }
             .terminal-window { backdrop-filter: none; }
@@ -713,7 +705,7 @@
         }
 
         @media (max-width: 420px) {
-            .voxx-logo { font-size: 0.8rem; letter-spacing: 2px; }
+            .voxx-logo { font-size: 1.1rem; letter-spacing: 3px; }
             .voxx-motto { font-size: 0.7rem; letter-spacing: 3px; }
             .psa-ticker-item { font-size: 0.78rem; }
         }
@@ -761,7 +753,7 @@
             <span class="voxx-version-tag">v3.0.7</span>
         </div>
         <div class="topbar-center">
-            <div class="topbar-title"><span class="title-desktop">Global Terminal</span><span class="title-mobile">Terminal</span></div>
+            <div class="topbar-title">Terminal</div>
             <div class="topbar-copyright">&copy; 2026 VOXX Inc. ALL RIGHTS RESERVED. UNAUTHORIZED ACCESS IS A CLASS-A FELONY.</div>
         </div>
         <div class="topbar-right" id="node-badge">NODE <b>PUBLIC-01</b></div>
