@@ -10,6 +10,8 @@ export interface IStake extends Document {
   current_session_start: string | null;
   status: 'active' | 'paused';
   last_synced: string | null;
+  /** Locked points from completed sessions — never decreases */
+  locked_points: number;
 }
 
 const StakeSchema = new Schema<IStake>({
@@ -22,6 +24,7 @@ const StakeSchema = new Schema<IStake>({
   current_session_start: { type: String, default: null },
   status: { type: String, enum: ['active', 'paused'], default: 'active' },
   last_synced: { type: String, default: null },
+  locked_points: { type: Number, default: 0.0 },
 });
 
 StakeSchema.index({ address: 1, object_id: 1 });

@@ -68,7 +68,7 @@ router.get('/', async (req: Request, res: Response) => {
 
       for (const stake of stakes) {
         const totalSec = computeTotalActiveSeconds(stake, now);
-        const { points, durationDays } = computePoints(totalSec, multiplier);
+        const { points, durationDays } = computePoints(stake as unknown as IStake, multiplier, now);
         totalCredits += points;
         if (durationDays > maxDurationDays) maxDurationDays = durationDays;
       }
@@ -96,7 +96,7 @@ router.get('/', async (req: Request, res: Response) => {
       let maxDurationDays = 0;
       for (const stake of stakes) {
         const totalSec = computeTotalActiveSeconds(stake, now);
-        const { points, durationDays } = computePoints(totalSec, multiplier);
+        const { points, durationDays } = computePoints(stake as unknown as IStake, multiplier, now);
         totalCredits += points;
         if (durationDays > maxDurationDays) maxDurationDays = durationDays;
       }

@@ -9,7 +9,7 @@ import {
   computePoints,
   getHoldingMultiplier,
 } from '../services/staking';
-import { VOXX_TYPE } from '../types';
+import { VOXX_TYPE, POINTS_PER_NFT_PER_HOUR } from '../types';
 import { config } from '../config';
 
 const router = Router();
@@ -101,6 +101,10 @@ async function syncStakesForAddress(
   //    BUT: if Kiosk scan had an error, skip pausing — we might have missed
   //    Kiosk-owned NFTs due to RPC flakiness. They'll be cleaned up next round.
   if (!kioskError) {
+    // Calculate current multiplier for locking points
+    const currentNftCount = ownedMap.size;
+    const currentMultiplier = getHoldingMultiplier(currentNftCount);
+
     for (const [objId, stake] of existingMap) {
       if (!ownedMap.has(objId) && stake.status === 'active') {
         let sessionSeconds = 0.0;
@@ -108,6 +112,10 @@ async function syncStakesForAddress(
           const sessionStart = new Date(stake.current_session_start);
           sessionSeconds = Math.max(0.0, (now.getTime() - sessionStart.getTime()) / 1000);
         }
+        // Lock current session's points at the CURRENT multiplier
+        const sessionHours = sessionSeconds / 3600;
+        const sessionPoints = Math.round(sessionHours * POINTS_PER_NFT_PER_HOUR * currentMultiplier);
+        stake.locked_points = (stake.locked_points || 0) + sessionPoints;
         stake.status = 'paused';
         stake.current_session_start = null;
         stake.total_staked_seconds = (stake.total_staked_seconds || 0.0) + sessionSeconds;
@@ -295,7 +303,7 @@ router.get('/nft/:objectId', authMiddleware, async (req: AuthRequest, res: Respo
       const s = stake as unknown as import('../models/Stake').IStake;
       const now = new Date();
       const totalActiveSeconds = computeTotalActiveSeconds(s, now);
-      const { points, durationDays } = computePoints(totalActiveSeconds, holdingMultiplier);
+      const { points, durationDays } = computePoints(s, holdingMultiplier, now);
       position = {
         status: s.status,
         lore_points: points,

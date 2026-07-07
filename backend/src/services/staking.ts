@@ -27,16 +27,33 @@ export function computeTotalActiveSeconds(stake: IStake, now: Date): number {
 /**
  * Compute lore points for a single NFT.
  *
- * Formula: points = total_hours × POINTS_PER_NFT_PER_HOUR × holding_multiplier
- * Points are rounded to the nearest integer.
+ * Points = locked_points + current_session_points
+ * Current session: totalHours × POINTS_PER_NFT_PER_HOUR × holdingMultiplier
+ *
+ * locked_points are permanently locked and never decrease.
+ * When an NFT is paused, the current session's points are locked in.
  */
 export function computePoints(
-  totalActiveSeconds: number,
-  holdingMultiplier: number
+  stake: IStake,
+  holdingMultiplier: number,
+  now: Date
 ): { points: number; durationDays: number } {
+  const totalActiveSeconds = computeTotalActiveSeconds(stake, now);
   const durationDays = totalActiveSeconds / 86400;
-  const totalHours = totalActiveSeconds / 3600;
-  const points = Math.round(totalHours * POINTS_PER_NFT_PER_HOUR * holdingMultiplier);
+
+  // Points from previously completed (paused) sessions — locked forever
+  const locked = stake.locked_points || 0;
+
+  // Points from the current active session (if any)
+  let currentSessionPoints = 0;
+  if (stake.status === 'active' && stake.current_session_start) {
+    const sessionStart = new Date(stake.current_session_start);
+    const sessionSeconds = Math.max(0, (now.getTime() - sessionStart.getTime()) / 1000);
+    const sessionHours = sessionSeconds / 3600;
+    currentSessionPoints = Math.round(sessionHours * POINTS_PER_NFT_PER_HOUR * holdingMultiplier);
+  }
+
+  const points = locked + currentSessionPoints;
   return { points, durationDays };
 }
 
@@ -50,7 +67,7 @@ export function buildPositionFromStake(
 ): StakingPosition {
   const now = new Date();
   const totalActiveSeconds = computeTotalActiveSeconds(stake, now);
-  const { points, durationDays } = computePoints(totalActiveSeconds, holdingMultiplier);
+  const { points, durationDays } = computePoints(stake, holdingMultiplier, now);
 
   return {
     object_id: stake.object_id,

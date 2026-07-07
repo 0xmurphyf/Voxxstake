@@ -61,7 +61,7 @@ router.get('/stats', authMiddleware, async (req: AuthRequest, res: Response) => 
       const nftCount = addressActiveCount.get(s.address) || 0;
       const mult = getHoldingMultiplier(nftCount);
       const totalSec = computeTotalActiveSeconds(s as unknown as import('../models/Stake').IStake, now);
-      const { points } = computePoints(totalSec, mult);
+      const { points } = computePoints(s as unknown as import('../models/Stake').IStake, mult, now);
       totalPoints += points;
     }
 

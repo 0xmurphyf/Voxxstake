@@ -1,6 +1,7 @@
 import { Stake } from '../models/Stake';
 import { getOwnedObjects, extractImageUrl, extractNftName } from './sui';
-import { VOXX_TYPE } from '../types';
+import { VOXX_TYPE, POINTS_PER_NFT_PER_HOUR } from '../types';
+import { getHoldingMultiplier } from './staking';
 import { config } from '../config';
 
 /**
@@ -92,6 +93,10 @@ async function syncAllAddresses(): Promise<void> {
         // Pause sold/transferred NFTs — but only if Kiosk scan succeeded.
         // If Kiosk scan failed, we might have missed NFTs → don't pause.
         if (!kioskError) {
+          // Calculate current multiplier for locking points
+          const currentNftCount = ownedSet.size;
+          const currentMultiplier = getHoldingMultiplier(currentNftCount);
+
           for (const [objId, stake] of existingMap) {
             if (!ownedSet.has(objId) && stake.status === 'active') {
               let sessionSeconds = 0.0;
@@ -99,6 +104,10 @@ async function syncAllAddresses(): Promise<void> {
                 const sessionStart = new Date(stake.current_session_start);
                 sessionSeconds = Math.max(0.0, (now.getTime() - sessionStart.getTime()) / 1000);
               }
+              // Lock current session's points at the CURRENT multiplier
+              const sessionHours = sessionSeconds / 3600;
+              const sessionPoints = Math.round(sessionHours * POINTS_PER_NFT_PER_HOUR * currentMultiplier);
+              stake.locked_points = (stake.locked_points || 0) + sessionPoints;
               stake.status = 'paused';
               stake.current_session_start = null;
               stake.total_staked_seconds = (stake.total_staked_seconds || 0.0) + sessionSeconds;
