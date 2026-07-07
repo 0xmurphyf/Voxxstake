@@ -293,10 +293,8 @@ export function IDCard({ positions, stats, walletAddress, authToken, onProfileSa
               <p className="mono" style={{ color: '#fff', fontSize: '0.95rem' }}>{totalNfts}</p>
             </div>
             <div>
-              <span className="hud-label" style={{ fontSize: '0.68rem' }}>RANK</span>
-              <p className="mono" style={{ color: '#FFD700', fontWeight: 600, fontSize: '0.95rem' }}>
-                {rank ? `#${rank} / ${totalApplicants}` : '—'}
-              </p>
+              <span className="hud-label" style={{ fontSize: '0.68rem' }}>MULTIPLIER</span>
+              <p className="mono" style={{ color: '#00FFCC', fontSize: '0.95rem' }}>{multiplier.toFixed(3)}x</p>
             </div>
             <div>
               <span className="hud-label" style={{ fontSize: '0.68rem' }}>ACCRUAL</span>
@@ -307,9 +305,9 @@ export function IDCard({ positions, stats, walletAddress, authToken, onProfileSa
               <p className="mono" style={{ color: '#00FF88', fontWeight: 600, fontSize: '0.95rem' }}>{totalCredits}</p>
             </div>
             <div>
-              <span className="hud-label" style={{ fontSize: '0.68rem' }}>REGISTERED</span>
-              <p className="mono" style={{ color: 'rgba(0,255,204,0.7)', fontSize: '0.95rem' }}>
-                {maxDuration > 0 ? formatDuration(maxDuration) : '—'}
+              <span className="hud-label" style={{ fontSize: '0.68rem' }}>RANK</span>
+              <p className="mono" style={{ color: '#FFD700', fontWeight: 600, fontSize: '0.95rem' }}>
+                {rank ? `#${rank} / ${totalApplicants}` : '—'}
               </p>
             </div>
           </div>
