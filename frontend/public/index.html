@@ -1380,21 +1380,75 @@
             });
         }
 
-        // ===== NODE badge: show real IP geolocation via ipapi.co =====
+        // ===== NODE badge: real IP geolocation with retry + backup providers =====
+        // Each provider is retried up to NODE_MAX_ATTEMPTS times with exponential
+        // backoff. If a provider is exhausted, the next one is tried (Plan B).
+        // If every provider fails, the static default "PUBLIC-01" label remains.
+        const NODE_GEO_PROVIDERS = [
+            {
+                name: 'ipapi.co',
+                url: 'https://ipapi.co/json/',
+                timeout: 4000,
+                parse: (g) => buildNodeLabel(g && g.city, g && g.country_code, g && g.country_name),
+            },
+            {
+                name: 'ipwho.is',
+                url: 'https://ipwho.is/',
+                timeout: 4000,
+                parse: (g) => (g && g.success === false) ? null
+                    : buildNodeLabel(g && g.city, g && g.country_code, g && g.country),
+            },
+            {
+                name: 'ipinfo.io',
+                url: 'https://ipinfo.io/json',
+                timeout: 4000,
+                parse: (g) => buildNodeLabel(
+                    g && g.city,
+                    (g && typeof g.country === 'string' && g.country.length === 2) ? g.country : null,
+                    g && g.country
+                ),
+            },
+        ];
+        const NODE_MAX_ATTEMPTS = 3; // total attempts per provider (≈2 retries)
+
+        function buildNodeLabel(city, code, countryName) {
+            if (city && code) return city.toUpperCase() + ', ' + code;
+            if (code) return code;
+            if (city) return city.toUpperCase();
+            if (countryName) return String(countryName).toUpperCase();
+            return null;
+        }
+
+        async function fetchNodeGeo(provider) {
+            const res = await fetch(provider.url, { signal: AbortSignal.timeout(provider.timeout) });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const data = await res.json();
+            const label = provider.parse(data);
+            if (!label) throw new Error('no geolocation in response');
+            return label;
+        }
+
         async function initNodeLocation() {
-            try {
-                const res = await fetch('https://ipapi.co/json/', { signal: AbortSignal.timeout(4000) });
-                if (!res.ok) return;
-                const geo = await res.json();
-                let label = 'PUBLIC-01';
-                if (geo.city && geo.country_code) {
-                    label = geo.city.toUpperCase() + ', ' + geo.country_code;
-                } else if (geo.country_name) {
-                    label = geo.country_name.toUpperCase();
+            for (const provider of NODE_GEO_PROVIDERS) {
+                let ok = false;
+                for (let attempt = 0; attempt < NODE_MAX_ATTEMPTS; attempt++) {
+                    try {
+                        const label = await fetchNodeGeo(provider);
+                        const badge = document.getElementById('node-badge');
+                        if (badge) badge.innerHTML = 'NODE <b>' + label + '</b>';
+                        ok = true;
+                        break;
+                    } catch (e) {
+                        // exponential backoff before the next retry (skip after last attempt)
+                        if (attempt < NODE_MAX_ATTEMPTS - 1) {
+                            await new Promise((r) => setTimeout(r, 500 * Math.pow(2, attempt)));
+                        }
+                    }
                 }
-                const badge = document.getElementById('node-badge');
-                if (badge) badge.innerHTML = 'NODE <b>' + label + '</b>';
-            } catch (e) { /* leave the default PUBLIC-01 label */ }
+                if (ok) return; // success — stop, no need for further providers
+                console.warn('[NODE] geolocation provider failed: ' + provider.name);
+            }
+            // All providers exhausted — keep the default static "PUBLIC-01" label.
         }
 
         // ===== Footer access counter (global, via backend API) =====
