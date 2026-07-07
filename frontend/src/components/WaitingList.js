@@ -83,7 +83,7 @@ export function WaitingList({ authToken, profileVersion }) {
           <span className="hud-label text-center">#</span>
           <span className="hud-label">APPLICANT</span>
           <span className="hud-label text-center">NFT</span>
-          <span className="hud-label text-center">ACCRUAL</span>
+          <span className="hud-label text-center waiting-col-accrual">ACCRUAL</span>
           <span className="hud-label text-right waiting-col-credits">CREDITS</span>
         </div>
 
@@ -131,7 +131,7 @@ export function WaitingList({ authToken, profileVersion }) {
                 </div>
 
                 {/* Accrual rate */}
-                <div className="flex items-center justify-center gap-1">
+                <div className="flex items-center justify-center gap-1 waiting-col-accrual">
                   <Lightning size={9} weight="fill" style={{ color: '#00FF88' }} />
                   <span className="mono" style={{ color: '#00FF88', fontSize: '0.7rem' }}>
                     {(entry.credential_count * (entry.multiplier || 1)).toFixed(1)}

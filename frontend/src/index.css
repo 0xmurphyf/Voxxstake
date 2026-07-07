@@ -768,11 +768,11 @@ h1, h2, h3, h4, h5, h6 {
 .waiting-row:nth-child(even) { background: rgba(0,255,204,0.02); }
 .waiting-row:hover { background: rgba(0,255,204,0.05); }
 
-/* Mobile: hide CREDITS column */
+/* Mobile: hide ACCRUAL column (keep CREDITS) */
 @media (max-width: 640px) {
   .waiting-header,
   .waiting-row {
     grid-template-columns: 28px 1fr 42px 56px;
   }
-  .waiting-col-credits { display: none; }
+  .waiting-col-accrual { display: none; }
 }
