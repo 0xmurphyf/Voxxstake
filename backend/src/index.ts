@@ -93,7 +93,7 @@ async function main() {
   const DIAG_TOKEN = process.env.DIAG_TOKEN || 'voxx-diag-local';
   const INSTANCE_ID = crypto.randomBytes(4).toString('hex');
   apiRouter.get('/diag', (req, res) => {
-    if (req.headers['x-voxx-diag'] !== DIAG_TOKEN) {
+    if (String(req.query.diag || '') !== DIAG_TOKEN) {
       res.status(404).json({ detail: 'Not found' });
       return;
     }
