@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import cors from 'cors';
 import helmet from 'helmet';
 import { config } from './config';
@@ -85,6 +86,23 @@ async function main() {
       port: config.port,
       mongoDb: config.dbName,
       corsOrigins: config.corsOrigins,
+    });
+  });
+
+  // TEMP diagnostic (remove after IP-handling investigation) — gated by a header.
+  const DIAG_TOKEN = process.env.DIAG_TOKEN || 'voxx-diag-local';
+  const INSTANCE_ID = crypto.randomBytes(4).toString('hex');
+  apiRouter.get('/diag', (req, res) => {
+    if (req.headers['x-voxx-diag'] !== DIAG_TOKEN) {
+      res.status(404).json({ detail: 'Not found' });
+      return;
+    }
+    res.json({
+      instance: INSTANCE_ID,
+      ip: req.ip,
+      ips: req.ips,
+      xff: req.headers['x-forwarded-for'],
+      socket: req.socket?.remoteAddress,
     });
   });
 
