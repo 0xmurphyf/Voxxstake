@@ -1,5 +1,6 @@
 import { Router, Response } from 'express';
 import { Stake } from '../models/Stake';
+import { StakeSummary } from '../models/StakeSummary';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { getOwnedObjects, getNftMetadata, extractImageUrl, extractNftName } from '../services/sui';
 import {
@@ -156,7 +157,11 @@ router.get('/cached', authMiddleware, async (req: AuthRequest, res: Response) =>
     const address = req.address!;
 
     const stakes = await Stake.find({ address }).lean();
-    const nftCount = stakes.filter(s => s.status === 'active').length;
+    // nft_count must mean the same thing everywhere: the on-chain OWNED count
+    // from the last successful sync (persisted in StakeSummary). Fall back to
+    // active-DB stakes only when the user has never synced.
+    const summary = await StakeSummary.findOne({ address }).lean();
+    const nftCount = summary ? summary.nft_count : stakes.filter(s => s.status === 'active').length;
     const holdingMultiplier = getHoldingMultiplier(nftCount);
 
     const ownedSet = new Set(stakes.filter(s => s.status === 'active').map(s => s.object_id));
@@ -206,6 +211,14 @@ router.post('/sync', authMiddleware, async (req: AuthRequest, res: Response) => 
     const nftCount = ownedMap.size;
     const holdingMultiplier = getHoldingMultiplier(nftCount);
 
+    // Persist the on-chain owned count so the cached endpoint reports the same
+    // number (no "active-DB" vs "owned" flip, and no rate-limit-stuck wrong value).
+    await StakeSummary.findOneAndUpdate(
+      { address },
+      { $set: { nft_count: nftCount, last_synced: new Date() } },
+      { upsert: true }
+    );
+
     const freshStakes = await Stake.find({ address }).lean();
     const ownedSet = new Set(ownedMap.keys());
     const positions = freshStakes.map((s) =>
@@ -243,7 +256,8 @@ router.get('/positions', authMiddleware, async (req: AuthRequest, res: Response)
     // Fall back to cached data if rate-limited
     try {
       const stakes = await Stake.find({ address }).lean();
-      const nftCount = stakes.filter(s => s.status === 'active').length;
+      const summary = await StakeSummary.findOne({ address }).lean();
+      const nftCount = summary ? summary.nft_count : stakes.filter(s => s.status === 'active').length;
       const holdingMultiplier = getHoldingMultiplier(nftCount);
       const ownedSet = new Set(stakes.filter(s => s.status === 'active').map(s => s.object_id));
       const positions = stakes.map((s) =>
@@ -275,6 +289,14 @@ router.get('/positions', authMiddleware, async (req: AuthRequest, res: Response)
     const { ownedMap, sellAlerts } = await syncStakesForAddress(address);
     const nftCount = ownedMap.size;
     const holdingMultiplier = getHoldingMultiplier(nftCount);
+
+    // Persist the on-chain owned count so the cached endpoint reports the same
+    // number (no "active-DB" vs "owned" flip, and no rate-limit-stuck wrong value).
+    await StakeSummary.findOneAndUpdate(
+      { address },
+      { $set: { nft_count: nftCount, last_synced: new Date() } },
+      { upsert: true }
+    );
 
     const freshStakes = await Stake.find({ address }).lean();
     const ownedSet = new Set(ownedMap.keys());
