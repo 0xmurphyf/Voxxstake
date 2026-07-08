@@ -19,6 +19,17 @@ import { startBackgroundSync } from './services/backgroundSync';
 async function main() {
   await connectDB();
 
+  // SECURITY: several safety controls are gated on NODE_ENV==='production'
+  // (CORS fallback, /api/debug/config exposure, JWT secret handling). If it's
+  // not set on the deployed service, those controls silently relax. Fail loud.
+  if (process.env.NODE_ENV !== 'production') {
+    console.warn(
+      '⚠️  SECURITY: NODE_ENV is not "production" — dev relaxations ACTIVE ' +
+      '(CORS may be "*", /api/debug/config is exposed, ephemeral JWT secret if JWT_SECRET unset). ' +
+      'Set NODE_ENV=production on the deployed service.'
+    );
+  }
+
   const app = express();
 
   // Trust the Railway proxy so req.protocol/req.ip reflect the real client
@@ -47,8 +58,9 @@ async function main() {
     })
   );
 
-  // Body parsing
-  app.use(express.json());
+  // Body parsing — cap payload size to limit memory-exhaustion / abuse vectors
+  // (e.g. a giant nonce/verify body). 1mb is far more than any legit request needs.
+  app.use(express.json({ limit: '1mb' }));
 
   // API routes under /api
   const apiRouter = express.Router();

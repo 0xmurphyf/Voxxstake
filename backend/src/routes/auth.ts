@@ -16,11 +16,12 @@ const router = Router();
 const AUTH_MIN_INTERVAL_MS = 3000;
 const authLastSeen = new Map<string, number>();
 
+// Use Express's req.ip, which is correctly derived from the trusted proxy
+// (app.set('trust proxy', 1) in index.ts). Reading x-forwarded-for directly
+// would let any client forge its IP via a header and bypass every per-IP
+// throttle / rate limit in this file. req.ip is the only trustworthy source.
 function clientIp(req: Request): string {
-  const xff = req.headers['x-forwarded-for'];
-  if (typeof xff === 'string') return xff.split(',')[0].trim();
-  if (Array.isArray(xff) && xff.length > 0) return xff[0].trim();
-  return req.socket?.remoteAddress || 'unknown';
+  return req.ip || req.socket?.remoteAddress || 'unknown';
 }
 
 function authThrottle(req: Request, res: Response): boolean {

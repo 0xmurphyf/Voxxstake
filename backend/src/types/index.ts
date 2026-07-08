@@ -83,5 +83,8 @@ export const POINTS_PER_NFT_PER_DAY = POINTS_PER_NFT_PER_HOUR * 24;
 export const HOLDING_MULTIPLIER_INCREMENT = 0.001;
 
 export const NONCE_EXPIRY_SECONDS = 300;
-export const JWT_EXPIRY_HOURS = 24;
+// Default auth-token lifetime. 24h was too long for a token with no revocation
+// path; 4h limits the blast radius of a leaked token. Override via the
+// JWT_EXPIRY_HOURS env var on the deployed service if a longer session is wanted.
+export const JWT_EXPIRY_HOURS = 4;
 export const JWT_ALGORITHM = 'HS256';

@@ -21,11 +21,11 @@ const ROOT_LOCK_WINDOW_MS = 15 * 60 * 1000;
 // single replica — same limitation as the existing auth throttle).
 const rootFailures = new Map<string, { count: number; windowStart: number }>();
 
+// Trust req.ip (derived from the trusted proxy via app.set('trust proxy', 1)),
+// NOT x-forwarded-for which a client can freely spoof. Spoofable IPs would let
+// an attacker reset the per-IP brute-force counter on every request.
 function clientIp(req: Request): string {
-  const xff = req.headers['x-forwarded-for'];
-  if (typeof xff === 'string') return xff.split(',')[0].trim();
-  if (Array.isArray(xff) && xff.length > 0) return xff[0].trim();
-  return req.socket?.remoteAddress || 'unknown';
+  return req.ip || req.socket?.remoteAddress || 'unknown';
 }
 
 // Constant-time string comparison. Length mismatch does not short-circuit the
@@ -135,7 +135,8 @@ function requireRoot(req: Request, res: Response): boolean {
   }
   const token = authHeader.replace('Bearer ', '');
   try {
-    const payload = jwt.verify(token, config.jwtSecret) as { root?: boolean };
+    // Pin the algorithm — same defense-in-depth as the user auth middleware.
+    const payload = jwt.verify(token, config.jwtSecret, { algorithms: ['HS256'] }) as { root?: boolean };
     if (!payload.root) {
       safeJson(res, 403, { detail: 'Insufficient clearance' });
       return false;

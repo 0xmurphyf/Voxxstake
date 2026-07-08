@@ -19,7 +19,10 @@ export function authMiddleware(
 
   const token = authHeader.replace('Bearer ', '');
   try {
-    const payload = jwt.verify(token, config.jwtSecret) as { sub: string };
+    // Pin the algorithm so a malicious/alg-confusion token (e.g. "none" or
+    // "RS256") can never be accepted. jwt v9 already rejects "none", but this
+    // is explicit defense-in-depth against algorithm downgrade attacks.
+    const payload = jwt.verify(token, config.jwtSecret, { algorithms: ['HS256'] }) as { sub: string };
     req.address = payload.sub;
     next();
   } catch {

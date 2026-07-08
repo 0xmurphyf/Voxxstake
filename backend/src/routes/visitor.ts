@@ -7,11 +7,11 @@ const router = Router();
 const visitorRateLimit = new Map<string, number>();
 const VISITOR_MIN_INTERVAL_MS = 2000;
 
+// Trust req.ip (derived from the trusted proxy via app.set('trust proxy', 1)),
+// NOT x-forwarded-for which a client can freely spoof. A spoofable IP would let
+// the public counter be inflated by resetting the per-IP throttle each request.
 function clientIp(req: Request): string {
-  const xff = req.headers['x-forwarded-for'];
-  if (typeof xff === 'string' && xff.length) return xff.split(',')[0].trim();
-  if (Array.isArray(xff) && xff.length) return xff[0];
-  return req.socket.remoteAddress || 'unknown';
+  return req.ip || req.socket?.remoteAddress || 'unknown';
 }
 
 /**

@@ -6,6 +6,31 @@ import { IStake } from '../models/Stake';
 
 const router = Router();
 
+// ─── Per-IP rate limit for the public ranking endpoint ─────────
+// Prevents an unauthenticated attacker from paging through the entire user
+// base cheaply to harvest display names / truncated addresses (enumeration).
+// Single-instance in-memory (sufficient for Railway single replica).
+const RANKING_MIN_INTERVAL_MS = 1500;
+const rankingLastSeen = new Map<string, number>();
+
+function rankingThrottle(req: Request, res: Response): boolean {
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  const now = Date.now();
+  const last = rankingLastSeen.get(ip) || 0;
+  if (now - last < RANKING_MIN_INTERVAL_MS) {
+    res
+      .status(429)
+      .json({ detail: 'Too many ranking requests, slow down.', retry_after_seconds: Math.ceil(RANKING_MIN_INTERVAL_MS / 1000) });
+    return false;
+  }
+  rankingLastSeen.set(ip, now);
+  if (rankingLastSeen.size % 200 === 0) {
+    const cutoff = now - RANKING_MIN_INTERVAL_MS * 4;
+    for (const [k, v] of rankingLastSeen) if (v < cutoff) rankingLastSeen.delete(k);
+  }
+  return true;
+}
+
 /**
  * Format address to a short display name.
  * If the user has set a profile name, show "Name (0xABC...)".
@@ -32,8 +57,14 @@ function formatDisplayName(address: string, profileName?: string | null): string
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
+    if (!rankingThrottle(req, res)) return;
+
     const now = new Date();
     const queryAddress = (req.query.address as string || '').toLowerCase();
+
+    // Pagination (clamped) so a single request can't dump the whole user base.
+    const limit = Math.min(Math.max(parseInt(String(req.query.limit || '100'), 10) || 100, 1), 500);
+    const skip = Math.max(parseInt(String(req.query.skip || '0'), 10) || 0, 0);
 
     // 1. Get ALL profiles — every user who ever authenticated
     const allProfiles = await Profile.find({}).lean();
@@ -125,10 +156,16 @@ router.get('/', async (req: Request, res: Response) => {
     // Strip full address from public response
     const publicEntries = entries.map(({ address: _a, ...rest }) => rest);
 
+    // Slice to the requested page. current_user_rank above is computed over the
+    // FULL sorted set, so it stays accurate regardless of pagination.
+    const pageEntries = publicEntries.slice(skip, skip + limit);
+
     res.json({
       total_stakers: entries.length,
       current_user_rank: currentUserRank,
-      rankings: publicEntries,
+      rankings: pageEntries,
+      limit,
+      skip,
     });
   } catch (err) {
     console.error('Ranking error:', err);
