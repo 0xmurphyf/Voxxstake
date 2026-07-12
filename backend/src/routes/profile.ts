@@ -31,7 +31,18 @@ router.put('/', authMiddleware, async (req: AuthRequest, res: Response) => {
 
     const update: Record<string, unknown> = {};
     if (name !== undefined) update.name = String(name).trim().slice(0, 32);
-    if (pfp_url !== undefined) update.pfp_url = pfp_url || null;
+    if (pfp_url !== undefined) {
+      // Only allow http/https URLs — reject javascript:, data:, file:, etc.
+      // Null/empty is allowed (clears the pfp).
+      if (pfp_url === null || pfp_url === '') {
+        update.pfp_url = null;
+      } else if (typeof pfp_url === 'string' && (pfp_url.startsWith('http://') || pfp_url.startsWith('https://'))) {
+        update.pfp_url = pfp_url;
+      } else {
+        res.status(400).json({ detail: 'pfp_url must be an http/https URL or null' });
+        return;
+      }
+    }
     if (pfp_object_id !== undefined) update.pfp_object_id = pfp_object_id || null;
 
     const profile = await Profile.findOneAndUpdate(

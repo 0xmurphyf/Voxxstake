@@ -359,8 +359,6 @@ router.get('/nft/:objectId', authMiddleware, async (req: AuthRequest, res: Respo
   }
 });
 
-export default router;
-
 // ─── DEBUG: GET /api/staking/debug/nfts?address=... (admin only) ──
 router.get('/debug/nfts', authMiddleware, async (req: AuthRequest, res: Response) => {
   if (!req.address || !config.adminAddresses.includes(req.address.toLowerCase())) {
@@ -377,6 +375,8 @@ router.get('/debug/nfts', authMiddleware, async (req: AuthRequest, res: Response
     res.json({ address, count: nfts.length, nfts: nfts.slice(0, 5) });
   } catch (err) {
     console.error('[DEBUG] NFT scan error:', err);
-    res.status(500).json({ detail: String(err) });
+    res.status(500).json({ detail: 'NFT scan failed' });
   }
 });
+
+export default router;

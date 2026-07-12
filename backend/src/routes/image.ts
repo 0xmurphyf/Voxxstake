@@ -2,41 +2,16 @@ import { Router, Response, Request } from 'express';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import dns from 'dns';
 import { getNftMetadata, extractImageUrl } from '../services/sui';
+import { assertSafeImageUrl } from '../services/ssrfGuard';
 
 const router = Router();
 
 // ─── SSRF guard ────────────────────────────────────────────────
 // imageUrl is derived from attacker-controllable on-chain NFT metadata, so we
-// must never fetch it blindly. Allow only http(s), resolve the hostname and
-// reject private/loopback/link-local addresses, and refuse redirects.
-function isPrivateIp(ip: string): boolean {
-  const v = ip.toLowerCase();
-  if (v === '::1' || v === '::' || v.startsWith('fe80:') || v.startsWith('fc') || v.startsWith('fd')) return true;
-  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(ip);
-  if (m) {
-    const p = [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])];
-    if (p[0] === 0 || p[0] === 10) return true;
-    if (p[0] === 127) return true;
-    if (p[0] === 169 && p[1] === 254) return true; // link-local (cloud metadata)
-    if (p[0] === 172 && p[1] >= 16 && p[1] <= 31) return true;
-    if (p[0] === 192 && p[1] === 168) return true;
-  }
-  return false;
-}
-
-async function assertSafeImageUrl(rawUrl: string): Promise<URL> {
-  const u = new URL(rawUrl);
-  if (u.protocol !== 'http:' && u.protocol !== 'https:') {
-    throw new Error('unsupported protocol');
-  }
-  const resolved = await dns.promises.lookup(u.hostname, { all: true });
-  if (resolved.some((r) => isPrivateIp(r.address))) {
-    throw new Error('blocked private/loopback address');
-  }
-  return u;
-}
+// must never fetch it blindly. The shared assertSafeImageUrl (services/ssrfGuard.ts)
+// resolves the hostname once, rejects private/loopback/link-local addresses,
+// and the caller below additionally refuses redirects.
 
 // Cache directory — persisted across restarts
 const CACHE_DIR = path.resolve(__dirname, '../../cache/images');
@@ -95,13 +70,21 @@ router.get('/:objectId', async (req: Request, res: Response) => {
     }
 
     // 4. Download the image — guard against SSRF (attacker-controlled URL)
-    const safeUrl = await assertSafeImageUrl(imageUrl);
+    //    assertSafeImageUrl returns a pinned IP so we never re-resolve DNS,
+    //    preventing DNS rebinding attacks (where a short-TTL domain flips from
+    //    a public IP during the check to 127.0.0.1 when fetch resolves it).
+    const safe = await assertSafeImageUrl(imageUrl);
+    const pinnedUrl = `${safe.protocol}://${safe.ip}${safe.original.pathname}${safe.original.search}`;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
 
     let imageRes: globalThis.Response;
     try {
-      imageRes = await fetch(safeUrl, { signal: controller.signal, redirect: 'manual' });
+      imageRes = await fetch(pinnedUrl, {
+        signal: controller.signal,
+        redirect: 'manual',
+        headers: { Host: safe.original.host }, // preserve original Host for virtual-hosting
+      });
     } finally {
       clearTimeout(timeout);
     }
@@ -151,13 +134,16 @@ function sendFile(res: Response, filePath: string) {
 }
 
 function mimeToExt(mime: string): string {
+  // Raster formats only — SVG is excluded because it can contain executable JS
+  // and the image proxy caches content forever (immutable, 1-year max-age).
+  // If an attacker-controlled NFT image_url points to a malicious SVG, it would
+  // be cached and served perpetually as an attack surface on the frontend.
   const map: Record<string, string> = {
     'image/png': 'png',
     'image/jpeg': 'jpg',
     'image/jpg': 'jpg',
     'image/gif': 'gif',
     'image/webp': 'webp',
-    'image/svg+xml': 'svg',
     'image/avif': 'avif',
   };
   return map[mime] || 'png';
@@ -170,7 +156,6 @@ function extToMime(ext: string): string {
     '.jpeg': 'image/jpeg',
     '.gif': 'image/gif',
     '.webp': 'image/webp',
-    '.svg': 'image/svg+xml',
     '.avif': 'image/avif',
   };
   return map[ext] || 'image/png';

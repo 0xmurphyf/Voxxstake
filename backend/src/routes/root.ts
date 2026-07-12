@@ -17,9 +17,12 @@ const ROOT_TOKEN_TTL_SECONDS = 15 * 60; // 15-minute short-lived token
 const ROOT_MAX_ATTEMPTS = 5;
 const ROOT_LOCK_WINDOW_MS = 15 * 60 * 1000;
 
-// Per-IP failure tracking (single-instance in-memory; sufficient for Railway
-// single replica — same limitation as the existing auth throttle).
-const rootFailures = new Map<string, { count: number; windowStart: number }>();
+// Global failure tracking — NOT per-IP. Per-IP buckets are trivially bypassed
+// by rotating source IPs (NAT pools, IPv6 /64, proxies). A single global counter
+// means ANY 5 consecutive failures lock the terminal for everyone, which is the
+// intended brute-force deterrent.
+let rootFailureCount = 0;
+let rootFailureWindowStart = 0;
 
 // Trust req.ip (derived from the trusted proxy via app.set('trust proxy', 1)),
 // NOT x-forwarded-for which a client can freely spoof. Spoofable IPs would let
@@ -66,27 +69,28 @@ router.post('/auth', async (req: Request, res: Response) => {
 
     const ip = clientIp(req);
     const now = Date.now();
-    const rec = rootFailures.get(ip);
-    if (rec && now - rec.windowStart < ROOT_LOCK_WINDOW_MS && rec.count >= ROOT_MAX_ATTEMPTS) {
+
+    // Global lock: any 5 consecutive failures freeze the terminal for everyone.
+    if (rootFailureCount >= ROOT_MAX_ATTEMPTS && now - rootFailureWindowStart < ROOT_LOCK_WINDOW_MS) {
       safeJson(res, 429, { ok: false, detail: 'Too many attempts. Try again later.' });
       return;
     }
 
     const { password } = req.body || {};
     if (typeof password !== 'string' || !safeEqual(password, config.rootTerminalPassword)) {
-      const cur = rootFailures.get(ip) || { count: 0, windowStart: now };
-      if (now - cur.windowStart >= ROOT_LOCK_WINDOW_MS) {
-        cur.count = 0;
-        cur.windowStart = now;
+      // Reset or start the global failure window
+      if (now - rootFailureWindowStart >= ROOT_LOCK_WINDOW_MS) {
+        rootFailureCount = 0;
+        rootFailureWindowStart = now;
       }
-      cur.count += 1;
-      rootFailures.set(ip, cur);
+      rootFailureCount += 1;
       safeJson(res, 401, { ok: false, detail: 'Invalid clearance code' });
       return;
     }
 
-    // Success — reset failure counter and issue a short-lived root token.
-    rootFailures.delete(ip);
+    // Success — reset global failure counter and issue a short-lived root token.
+    rootFailureCount = 0;
+    rootFailureWindowStart = 0;
     const issuedAt = Math.floor(Date.now() / 1000);
     const token = jwt.sign(
       { root: true, iat: issuedAt, exp: issuedAt + ROOT_TOKEN_TTL_SECONDS },

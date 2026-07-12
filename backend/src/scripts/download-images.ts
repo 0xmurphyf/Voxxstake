@@ -17,6 +17,7 @@ import crypto from 'crypto';
 import { config } from '../config';
 import { Stake } from '../models/Stake';
 import { getNftMetadata, extractImageUrl, getOwnedObjects } from '../services/sui';
+import { assertSafeImageUrl } from '../services/ssrfGuard';
 import { VOXX_TYPE } from '../types';
 
 const CACHE_DIR = path.resolve(__dirname, '../../cache/images');
@@ -25,9 +26,10 @@ if (!fs.existsSync(CACHE_DIR)) {
 }
 
 function mimeToExt(mime: string): string {
+  // Raster formats only — SVG excluded (see image.ts for rationale).
   const map: Record<string, string> = {
     'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg',
-    'image/gif': 'gif', 'image/webp': 'webp', 'image/svg+xml': 'svg', 'image/avif': 'avif',
+    'image/gif': 'gif', 'image/webp': 'webp', 'image/avif': 'avif',
   };
   return map[mime] || 'png';
 }
@@ -55,10 +57,23 @@ async function downloadImage(objectId: string): Promise<DownloadResult> {
       return 'failed';
     }
 
-    // Download
+    // Download — guarded against SSRF (attacker-controlled on-chain image_url)
+    //    Uses the pinned IP from assertSafeImageUrl to prevent DNS rebinding.
+    let safe: { ip: string; protocol: string; original: URL };
+    try {
+      safe = await assertSafeImageUrl(imageUrl);
+    } catch (err) {
+      console.log(`  [BLOCKED] ${objectId.slice(-8)} — ${err instanceof Error ? err.message : String(err)}`);
+      return 'failed';
+    }
+    const pinnedUrl = `${safe.protocol}://${safe.ip}${safe.original.pathname}${safe.original.search}`;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20000);
-    const res = await fetch(imageUrl, { signal: controller.signal });
+    const res = await fetch(pinnedUrl, {
+      signal: controller.signal,
+      redirect: 'manual',
+      headers: { Host: safe.original.host },
+    });
     clearTimeout(timeout);
 
     if (!res.ok) {

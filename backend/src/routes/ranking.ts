@@ -60,7 +60,15 @@ router.get('/', async (req: Request, res: Response) => {
     if (!rankingThrottle(req, res)) return;
 
     const now = new Date();
-    const queryAddress = (req.query.address as string || '').toLowerCase();
+    // Reject non-string address params (e.g. ?address[$ne]=null from NoSQL injection
+    // attempts). Express qs parser turns those into objects; .toLowerCase() on them
+    // throws TypeError → 500, which is a DoS vector. Catch it early.
+    const rawAddress = req.query.address;
+    if (rawAddress !== undefined && typeof rawAddress !== 'string') {
+      res.status(400).json({ detail: 'Invalid address parameter' });
+      return;
+    }
+    const queryAddress = (rawAddress as string || '').toLowerCase();
 
     // Pagination (clamped) so a single request can't dump the whole user base.
     const limit = Math.min(Math.max(parseInt(String(req.query.limit || '100'), 10) || 100, 1), 500);
