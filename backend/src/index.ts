@@ -108,7 +108,17 @@ async function main() {
     console.log(`Frontend files: ${fs.readdirSync(frontendBuild).join(', ')}`);
   }
 
-  app.use(express.static(frontendBuild));
+  app.use(express.static(frontendBuild, {
+    setHeaders: (res, filePath) => {
+      // Never let a browser/CDN pin an old SPA shell after deployment. Hashed
+      // JS/CSS assets are immutable and can still be cached aggressively.
+      if (path.basename(filePath) === 'index.html') {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      } else if (filePath.includes(`${path.sep}static${path.sep}`)) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      }
+    },
+  }));
 
   // SPA fallback — but never swallow unmatched /api/* routes (otherwise a
   // mistyped API path returns 200 + HTML, masking real 404s and confusing clients).
@@ -119,6 +129,7 @@ async function main() {
     }
     const indexPath = path.join(frontendBuild, 'index.html');
     if (fs.existsSync(indexPath)) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
       res.sendFile(indexPath);
     } else {
       res.status(404).json({ detail: 'Frontend not built', path: indexPath });
