@@ -1005,6 +1005,7 @@
                             <label class="hud-label">N</label>
                             <input id="filez-limit" class="term-input" type="number" min="1" max="100" value="50" style="width:64px;" />
                             <button class="modal-btn" id="filez-query" style="padding:6px 18px;">QUERY</button>
+                            <button class="modal-btn" id="filez-sync" style="padding:6px 18px; background: rgba(0,255,204,0.1); border-color: rgba(0,255,204,0.4); color: #0ff;">SYNC</button>
                             <button class="modal-btn no-btn" id="filez-lock" style="padding:6px 18px;">LOCK</button>
                         </div>
                         <div id="filez-results" class="filez-results"></div>
@@ -1760,6 +1761,56 @@
         }
 
 
+        async function triggerFileZSync() {
+            if (!rootToken) { lockFileZ(); return; }
+            const syncBtn = document.getElementById('filez-sync');
+            const origText = syncBtn.textContent;
+            syncBtn.textContent = 'SYNCING…';
+            syncBtn.disabled = true;
+            try {
+                const r = await fetch('/api/root/sync', {
+                    method: 'POST',
+                    headers: { Authorization: 'Bearer ' + rootToken },
+                });
+                const data = await r.json().catch(() => ({}));
+                if (r.status === 401 || r.status === 403) {
+                    lockFileZ();
+                    return;
+                }
+                if (r.ok) {
+                    syncBtn.textContent = '✓ SYNCED';
+                    syncBtn.style.color = '#0f0';
+                    syncBtn.style.borderColor = '#0f0';
+                    setTimeout(() => {
+                        syncBtn.textContent = 'SYNC';
+                        syncBtn.style.color = '#0ff';
+                        syncBtn.style.borderColor = 'rgba(0,255,204,0.4)';
+                        syncBtn.disabled = false;
+                    }, 2000);
+                } else {
+                    syncBtn.textContent = '✗ FAILED';
+                    syncBtn.style.color = '#f55';
+                    syncBtn.style.borderColor = '#f55';
+                    setTimeout(() => {
+                        syncBtn.textContent = origText;
+                        syncBtn.style.color = '#0ff';
+                        syncBtn.style.borderColor = 'rgba(0,255,204,0.4)';
+                        syncBtn.disabled = false;
+                    }, 2000);
+                }
+            } catch (e) {
+                syncBtn.textContent = '✗ ERROR';
+                syncBtn.style.color = '#f55';
+                syncBtn.style.borderColor = '#f55';
+                setTimeout(() => {
+                    syncBtn.textContent = origText;
+                    syncBtn.style.color = '#0ff';
+                    syncBtn.style.borderColor = 'rgba(0,255,204,0.4)';
+                    syncBtn.disabled = false;
+                }, 2000);
+            }
+        }
+
         document.addEventListener('DOMContentLoaded', async () => {
             decorateArchiveEntries();
             decorateIdCards();
@@ -1767,8 +1818,10 @@
             initAccessCounter();
             initLogoEasterEgg();
             const fzQuery = document.getElementById('filez-query');
+            const fzSync = document.getElementById('filez-sync');
             const fzLock = document.getElementById('filez-lock');
             if (fzQuery) fzQuery.addEventListener('click', queryFileZ);
+            if (fzSync) fzSync.addEventListener('click', triggerFileZSync);
             if (fzLock) fzLock.addEventListener('click', lockFileZ);
             // Column sorting (event delegation so it survives table re-renders)
             const fzResults = document.getElementById('filez-results');
