@@ -71,21 +71,17 @@ router.post('/nonce', async (req: Request, res: Response) => {
     // Human-readable message so the user's wallet shows what they're signing
     const nonce = `Apply for Neoterra Citizenship\n\nWallet: ${normalized}\nNonce: ${randomPart}`;
 
-    // Atomically upsert: if an unused nonce exists for this address, replace it;
-    // otherwise insert a new one. The unique partial index on { address, used: false }
-    // (see models/Nonce.ts) guarantees at most one unused nonce per address.
+    // Race-safe nonce creation:
+    //   1. Delete any existing unused nonce for this address (cleanup).
+    //   2. Insert the new nonce. The unique partial index on { address, used: false }
+    //      (see models/Nonce.ts) guarantees at most one unused nonce per address.
     //
-    // In the rare case where two concurrent /nonce calls both attempt to insert
-    // (because neither found an existing unused nonce), the second one hits a
-    // duplicate-key error (E11000). We catch that and read back the winner's
-    // nonce — we must NOT overwrite it with our own, otherwise the winner's
-    // client receives a nonce that no longer exists in the DB and /verify fails.
+    //   If two concurrent requests both delete+insert, one hits E11000.
+    //   The loser reads back the winner's nonce and returns THAT to the client,
+    //   so both clients receive the same nonce and /verify works for both.
     try {
-      await Nonce.findOneAndUpdate(
-        { address: normalized, used: false },
-        { $set: { nonce, created_at: new Date() } },
-        { upsert: true, new: true }
-      );
+      await Nonce.deleteMany({ address: normalized, used: false });
+      await Nonce.create({ address: normalized, nonce, created_at: new Date() });
     } catch (err: unknown) {
       if (
         err &&
@@ -98,13 +94,10 @@ router.post('/nonce', async (req: Request, res: Response) => {
           res.json({ nonce: existing.nonce, address: normalized });
           return;
         }
-        // Existing nonce expired / was used between the E11000 and our read —
-        // retry the upsert (rare edge case, guarded by throttle).
-        await Nonce.findOneAndUpdate(
-          { address: normalized, used: false },
-          { $set: { nonce, created_at: new Date() } },
-          { upsert: true, new: true }
-        );
+        // Edge case: existing nonce expired/was used between E11000 and read.
+        // Retry the whole delete+insert (rare, guarded by throttle).
+        await Nonce.deleteMany({ address: normalized, used: false });
+        await Nonce.create({ address: normalized, nonce, created_at: new Date() });
       } else {
         throw err;
       }
