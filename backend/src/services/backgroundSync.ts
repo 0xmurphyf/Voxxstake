@@ -1,8 +1,11 @@
 import { Stake } from '../models/Stake';
 import { StakeSummary } from '../models/StakeSummary';
+import { RankingSnapshot } from '../models/RankingSnapshot';
+import { Profile } from '../models/Profile';
 import { getOwnedObjects, extractImageUrl, extractNftName } from './sui';
 import { VOXX_TYPE, POINTS_PER_NFT_PER_HOUR } from '../types';
-import { getHoldingMultiplier } from './staking';
+import { getHoldingMultiplier, computeTotalActiveSeconds, computePoints } from './staking';
+import { IStake } from '../models/Stake';
 import { config } from '../config';
 import { withMutex } from './mutex';
 
@@ -45,11 +48,19 @@ async function syncAllAddresses(): Promise<void> {
     let errors = 0;
 
     for (const address of addresses) {
+      let perAddrTimer: ReturnType<typeof setTimeout> | undefined;
       try {
         // Wrap in a per-address timeout so a single hung address (e.g. RPC
         // stall that outlives the mutex timeout) doesn't block the entire loop.
         // The mutex (90s timeout) is the first line of defense; this 120s
         // outer timeout is the safety net.
+        const perAddrTimeout = new Promise<never>((_, reject) => {
+          perAddrTimer = setTimeout(
+            () => reject(new Error(`BG sync timeout for ${address.slice(0, 10)}...`)),
+            PER_ADDRESS_SYNC_TIMEOUT_MS
+          );
+        });
+
         await Promise.race([
           withMutex(address, async () => {
         // Fetch owned NFTs from chain
@@ -155,15 +166,15 @@ async function syncAllAddresses(): Promise<void> {
           { upsert: true }
         );
           }), // withMutex
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error(`BG sync timeout for ${address.slice(0, 10)}...`)), PER_ADDRESS_SYNC_TIMEOUT_MS)
-          ),
+          perAddrTimeout,
         ]);
 
         updated++;
       } catch (err) {
         errors++;
         console.error(`[BG Sync] Error syncing ${address}:`, err);
+      } finally {
+        if (perAddrTimer) clearTimeout(perAddrTimer);
       }
 
       // Small delay between addresses to avoid RPC rate limiting
@@ -172,6 +183,15 @@ async function syncAllAddresses(): Promise<void> {
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log(`[BG Sync] Done: ${updated} updated, ${errors} errors in ${elapsed}s`);
+
+    // Rebuild ranking snapshot after sync completes. This is a fast DB-only
+    // operation (no RPC) that precomputes the data the /api/ranking endpoint
+    // needs, so it never has to full-table-scan on every request.
+    try {
+      await rebuildRankingSnapshot();
+    } catch (err) {
+      console.error('[BG Sync] Ranking snapshot rebuild failed:', err);
+    }
   } catch (err) {
     console.error('[BG Sync] Fatal error:', err);
   } finally {
@@ -209,6 +229,114 @@ export function stopBackgroundSync(): void {
     syncTimer = null;
     console.log('[BG Sync] Stopped');
   }
+}
+
+/**
+ * Rebuild the RankingSnapshot collection from Profile + Stake data.
+ * Called after each background sync cycle so the /api/ranking endpoint
+ * never needs to full-table-scan.
+ */
+async function rebuildRankingSnapshot(): Promise<void> {
+  const startTime = Date.now();
+  const now = new Date();
+
+  const allProfiles = await Profile.find({}).lean();
+  const nameMap = new Map<string, string | null>();
+  for (const p of allProfiles) {
+    nameMap.set(p.address.toLowerCase(), p.name || null);
+  }
+
+  const allStakes = await Stake.find({}).lean();
+  const stakesByAddress = new Map<string, IStake[]>();
+  for (const stake of allStakes) {
+    const s = stake as unknown as IStake;
+    const key = s.address.toLowerCase();
+    const existing = stakesByAddress.get(key) || [];
+    existing.push(s);
+    stakesByAddress.set(key, existing);
+  }
+
+  // Build entries from profiles (every authenticated user)
+  const entries: Array<{
+    address: string;
+    display_address: string;
+    display_name: string;
+    credential_count: number;
+    multiplier: number;
+    total_credits: number;
+    max_duration_days: number;
+  }> = [];
+
+  for (const p of allProfiles) {
+    const address = p.address.toLowerCase();
+    const stakes = stakesByAddress.get(address) || [];
+    const activeStakes = stakes.filter(s => s.status === 'active');
+    const nftCount = activeStakes.length;
+    const multiplier = getHoldingMultiplier(nftCount);
+
+    let totalCredits = 0;
+    let maxDurationDays = 0;
+    for (const stake of stakes) {
+      const { points, durationDays } = computePoints(stake, multiplier, now);
+      totalCredits += points;
+      if (durationDays > maxDurationDays) maxDurationDays = durationDays;
+    }
+
+    const profileName = nameMap.get(address);
+    entries.push({
+      address,
+      display_address: `${address.slice(0, 8)}...${address.slice(-6)}`,
+      display_name: profileName && profileName.trim()
+        ? `${profileName.trim()} (0x${address.slice(2, 5)})`
+        : `0x${address.slice(2, 5)}`,
+      credential_count: nftCount,
+      multiplier,
+      total_credits: totalCredits,
+      max_duration_days: maxDurationDays,
+    });
+  }
+
+  // Also include stake-only addresses not in Profile (legacy data)
+  const profileAddresses = new Set(allProfiles.map(p => p.address.toLowerCase()));
+  for (const [address, stakes] of stakesByAddress) {
+    if (profileAddresses.has(address)) continue;
+    const activeStakes = stakes.filter(s => s.status === 'active');
+    const nftCount = activeStakes.length;
+    const multiplier = getHoldingMultiplier(nftCount);
+
+    let totalCredits = 0;
+    let maxDurationDays = 0;
+    for (const stake of stakes) {
+      const { points, durationDays } = computePoints(stake, multiplier, now);
+      totalCredits += points;
+      if (durationDays > maxDurationDays) maxDurationDays = durationDays;
+    }
+
+    entries.push({
+      address,
+      display_address: `${address.slice(0, 8)}...${address.slice(-6)}`,
+      display_name: `0x${address.slice(2, 5)}`,
+      credential_count: nftCount,
+      multiplier,
+      total_credits: totalCredits,
+      max_duration_days: maxDurationDays,
+    });
+  }
+
+  // Bulk-upsert into RankingSnapshot
+  if (entries.length > 0) {
+    const ops = entries.map(e => ({
+      updateOne: {
+        filter: { address: e.address },
+        update: { $set: { ...e, updated_at: now } },
+        upsert: true,
+      },
+    }));
+    await RankingSnapshot.bulkWrite(ops, { ordered: false });
+  }
+
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  console.log(`[BG Sync] Ranking snapshot rebuilt: ${entries.length} entries in ${elapsed}s`);
 }
 
 /**

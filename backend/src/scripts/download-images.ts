@@ -89,10 +89,43 @@ async function downloadImage(objectId: string): Promise<DownloadResult> {
     const filename = `${hash}.${ext}`;
     const filePath = path.join(CACHE_DIR, filename);
 
-    const arrayBuf = await res.arrayBuffer();
-    fs.writeFileSync(filePath, Buffer.from(arrayBuf));
+    // Stream with size cap — attacker-controlled NFT image_url could point to
+    // a multi-GB resource.
+    const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
+    const reader = res.body?.getReader();
+    let buffer: Buffer;
+    if (reader) {
+      const chunks: Uint8Array[] = [];
+      let received = 0;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          received += value.byteLength;
+          if (received > MAX_BYTES) {
+            await reader.cancel();
+            console.log(`  [TOOBIG] ${objectId.slice(-8)} — ${(received / 1024 / 1024).toFixed(1)} MB`);
+            return 'failed';
+          }
+          chunks.push(value);
+        }
+      } catch (err) {
+        console.log(`  [ERR] ${objectId.slice(-8)} — stream: ${err instanceof Error ? err.message : String(err)}`);
+        return 'failed';
+      }
+      buffer = Buffer.concat(chunks);
+    } else {
+      const arrayBuf = await res.arrayBuffer();
+      if (arrayBuf.byteLength > MAX_BYTES) {
+        console.log(`  [TOOBIG] ${objectId.slice(-8)} — ${(arrayBuf.byteLength / 1024 / 1024).toFixed(1)} MB`);
+        return 'failed';
+      }
+      buffer = Buffer.from(arrayBuf);
+    }
 
-    const sizeKB = (arrayBuf.byteLength / 1024).toFixed(1);
+    fs.writeFileSync(filePath, buffer);
+
+    const sizeKB = (buffer.byteLength / 1024).toFixed(1);
     console.log(`  [OK] ${objectId.slice(-8)} → ${filename} (${sizeKB} KB)`);
     return 'downloaded';
   } catch (err) {

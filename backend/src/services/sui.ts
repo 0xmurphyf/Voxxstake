@@ -226,21 +226,20 @@ async function getKioskOwnedObjects(
 ): Promise<Record<string, unknown>[]> {
   const allObjects: Record<string, unknown>[] = [];
 
-  try {
-    // Helper: extract Kiosk ID from a cap wrapper
-    const extractKioskId = (capWrapper: Record<string, unknown>): string | null => {
-      const capData = (capWrapper as Record<string, unknown>).data as Record<string, unknown>;
-      const content = capData?.content as Record<string, unknown> | undefined;
-      const fields = content?.fields as Record<string, unknown> | undefined;
-      // Standard KioskOwnerCap: fields.for
-      const directFor = fields?.for as string | undefined;
-      if (directFor) return directFor;
-      // PersonalKioskCap: fields.cap.fields.for (nested wrapper)
-      const cap = fields?.cap as Record<string, unknown> | undefined;
-      const capFields = cap?.fields as Record<string, unknown> | undefined;
-      const nestedFor = capFields?.for as string | undefined;
-      return nestedFor || null;
-    };
+  // Helper: extract Kiosk ID from a cap wrapper
+  const extractKioskId = (capWrapper: Record<string, unknown>): string | null => {
+    const capData = (capWrapper as Record<string, unknown>).data as Record<string, unknown>;
+    const content = capData?.content as Record<string, unknown> | undefined;
+    const fields = content?.fields as Record<string, unknown> | undefined;
+    // Standard KioskOwnerCap: fields.for
+    const directFor = fields?.for as string | undefined;
+    if (directFor) return directFor;
+    // PersonalKioskCap: fields.cap.fields.for (nested wrapper)
+    const cap = fields?.cap as Record<string, unknown> | undefined;
+    const capFields = cap?.fields as Record<string, unknown> | undefined;
+    const nestedFor = capFields?.for as string | undefined;
+    return nestedFor || null;
+  };
 
     // 1. Find all KioskOwnerCap and PersonalKioskCap objects owned by the
     //    address. We do a single unfiltered scan of all owned objects (with
@@ -327,10 +326,6 @@ async function getKioskOwnedObjects(
         cursor = dfResult.nextCursor;
       }
     }
-  } catch (err) {
-    // Kiosk scanning is best-effort — don't fail the whole sync
-    console.error('Kiosk scan error (non-fatal):', err);
-  }
 
   return allObjects;
 }

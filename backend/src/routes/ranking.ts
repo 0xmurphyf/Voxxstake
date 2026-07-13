@@ -1,8 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { Stake } from '../models/Stake';
-import { Profile } from '../models/Profile';
-import { computeTotalActiveSeconds, computePoints, getHoldingMultiplier } from '../services/staking';
-import { IStake } from '../models/Stake';
+import { RankingSnapshot } from '../models/RankingSnapshot';
 import { createThrottle } from '../services/throttle';
 
 const router = Router();
@@ -39,38 +36,20 @@ function formatDisplayName(address: string, profileName?: string | null): string
 }
 
 /**
- * GET /api/ranking?address=<optional>
+ * GET /api/ranking?address=<optional>&limit=100&skip=0
  *
  * Public endpoint — no auth required.
- * Returns ALL applicants from the Profile collection (every authenticated
- * user), merged with Stake data for credits/NFT counts.
- * Users who authenticated but never held an NFT appear with 0 credits.
- * Ranked by total citizenship credits (0-credit users at the bottom).
+ * Reads from the precomputed RankingSnapshot collection (rebuilt by
+ * backgroundSync every cycle), so response time is a single indexed
+ * MongoDB query regardless of user count — no full-table scans.
  *
  * If ?address= is provided, the response includes current_user_rank.
- *
- * SCALABILITY: Currently loads full Profile + Stake collections into memory.
- * For <10k users this is fine (<1MB memory per request). When the user base
- * grows beyond that, the per-IP 1.5s throttle keeps concurrency low, but
- * individual request latency will increase linearly. The migration path is:
- *   1. Add a cron job to pre-compute total_credits into a new RankingSnapshot
- *      collection every 5 minutes (backgroundSync already touches every address).
- *   2. The ranking endpoint then reads from the pre-computed snapshot with a
- *      simple .find().sort().skip().limit() — sub-10ms regardless of user count.
- *   3. current_user_rank for the query address is still accurate because the
- *      snapshot is sorted by credits.
- * This is documented rather than implemented now because the point-calculation
- * logic (computePoints, session_multiplier, locked_points) is inherently
- * application-layer and cannot be pushed into a MongoDB aggregation pipeline.
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
     if (!rankingThrottle(req, res)) return;
 
-    const now = new Date();
-    // Reject non-string address params (e.g. ?address[$ne]=null from NoSQL injection
-    // attempts). Express qs parser turns those into objects; .toLowerCase() on them
-    // throws TypeError → 500, which is a DoS vector. Catch it early.
+    // Reject non-string address params
     const rawAddress = req.query.address;
     if (rawAddress !== undefined && typeof rawAddress !== 'string') {
       res.status(400).json({ detail: 'Invalid address parameter' });
@@ -78,112 +57,44 @@ router.get('/', async (req: Request, res: Response) => {
     }
     const queryAddress = (rawAddress as string || '').toLowerCase();
 
-    // Pagination (clamped) so a single request can't dump the whole user base.
+    // Pagination (clamped)
     const limit = Math.min(Math.max(parseInt(String(req.query.limit || '100'), 10) || 100, 1), 500);
     const skip = Math.max(parseInt(String(req.query.skip || '0'), 10) || 0, 0);
 
-    // 1. Get ALL profiles — every user who ever authenticated.
-    const allProfiles = await Profile.find({}).lean();
-    const nameMap = new Map<string, string | null>();
-    for (const p of allProfiles) {
-      nameMap.set(p.address.toLowerCase(), p.name || null);
-    }
+    // Total count (cached by index — fast)
+    const totalStakers = await RankingSnapshot.countDocuments();
 
-    // 2. Get ALL stakes (active + paused)
-    const allStakes = await Stake.find({}).lean();
+    // Page of rankings sorted by total_credits DESC (uses the compound index)
+    const page = await RankingSnapshot
+      .find({}, { _id: 0, address: 0, updated_at: 0 })
+      .sort({ total_credits: -1, address: 1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
 
-    // Group stakes by address
-    const stakesByAddress = new Map<string, IStake[]>();
-    for (const stake of allStakes) {
-      const s = stake as unknown as IStake;
-      const key = s.address.toLowerCase();
-      const existing = stakesByAddress.get(key) || [];
-      existing.push(s);
-      stakesByAddress.set(key, existing);
-    }
-
-    // 3. Build entries: start from profiles (every authenticated user)
-    const entries = allProfiles.map(p => {
-      const address = p.address.toLowerCase();
-      const stakes = stakesByAddress.get(address) || stakesByAddress.get(p.address) || [];
-      const activeStakes = stakes.filter(s => s.status === 'active');
-      const nftCount = activeStakes.length;
-      const multiplier = getHoldingMultiplier(nftCount);
-
-      let totalCredits = 0;
-      let maxDurationDays = 0;
-
-      for (const stake of stakes) {
-        const totalSec = computeTotalActiveSeconds(stake, now);
-        const { points, durationDays } = computePoints(stake as unknown as IStake, multiplier, now);
-        totalCredits += points;
-        if (durationDays > maxDurationDays) maxDurationDays = durationDays;
-      }
-
-      return {
-        address,
-        display_address: `${address.slice(0, 8)}...${address.slice(-6)}`,
-        display_name: formatDisplayName(address, nameMap.get(address)),
-        credential_count: nftCount,
-        multiplier,
-        total_credits: totalCredits,
-        max_duration_days: maxDurationDays,
-      };
-    });
-
-    // 4. Also include any stake addresses NOT in Profile (edge case: legacy data)
-    const profileAddresses = new Set(allProfiles.map(p => p.address.toLowerCase()));
-    for (const [address, stakes] of stakesByAddress) {
-      if (profileAddresses.has(address)) continue;
-      const activeStakes = stakes.filter(s => s.status === 'active');
-      const nftCount = activeStakes.length;
-      const multiplier = getHoldingMultiplier(nftCount);
-
-      let totalCredits = 0;
-      let maxDurationDays = 0;
-      for (const stake of stakes) {
-        const totalSec = computeTotalActiveSeconds(stake, now);
-        const { points, durationDays } = computePoints(stake as unknown as IStake, multiplier, now);
-        totalCredits += points;
-        if (durationDays > maxDurationDays) maxDurationDays = durationDays;
-      }
-
-      entries.push({
-        address,
-        display_address: `${address.slice(0, 8)}...${address.slice(-6)}`,
-        display_name: formatDisplayName(address, null),
-        credential_count: nftCount,
-        multiplier,
-        total_credits: totalCredits,
-        max_duration_days: maxDurationDays,
-      });
-    }
-
-    // 5. Sort by total credits descending (0-credit users sink to bottom)
-    entries.sort((a, b) => b.total_credits - a.total_credits);
-
-    // 6. Find current user's rank if address provided.
-    //    To prevent address enumeration (an oracle that reveals whether a given
-    //    Sui address has ever authenticated), unregistered addresses get a fake
-    //    rank of total_stakers+1 instead of null. This way the response looks
-    //    identical whether the address exists or not.
+    // Current user's rank if address provided.
+    // Count documents with higher credits + same-credits-but-lower-address.
     let currentUserRank: number | null = null;
     if (queryAddress) {
-      const idx = entries.findIndex(e => e.address === queryAddress);
-      currentUserRank = idx >= 0 ? idx + 1 : entries.length + 1;
+      const user = await RankingSnapshot.findOne({ address: queryAddress }).lean();
+      if (user) {
+        const higherCount = await RankingSnapshot.countDocuments({
+          $or: [
+            { total_credits: { $gt: user.total_credits } },
+            { total_credits: user.total_credits, address: { $lt: queryAddress } },
+          ],
+        });
+        currentUserRank = higherCount + 1;
+      } else {
+        // Unregistered address — fake rank to prevent enumeration oracle
+        currentUserRank = totalStakers + 1;
+      }
     }
 
-    // Strip full address from public response
-    const publicEntries = entries.map(({ address: _a, ...rest }) => rest);
-
-    // Slice to the requested page. current_user_rank above is computed over the
-    // FULL sorted set, so it stays accurate regardless of pagination.
-    const pageEntries = publicEntries.slice(skip, skip + limit);
-
     res.json({
-      total_stakers: entries.length,
+      total_stakers: totalStakers,
       current_user_rank: currentUserRank,
-      rankings: pageEntries,
+      rankings: page,
       limit,
       skip,
     });

@@ -6,9 +6,10 @@
  * overwrite the first).
  *
  * Each critical section has a configurable timeout (default 90s). If `fn()`
- * does not settle within that window, the lock is released and the caller
- * receives a timeout error. This prevents a single hung RPC or MongoDB
- * operation from permanently deadlocking all sync operations for one address.
+ * does not settle within that window, the CALLER receives a timeout error, but
+ * the lock remains held until fn() actually finishes — preventing overlapping
+ * critical sections. A subsequent caller will wait for the timed-out fn() to
+ * settle before entering.
  */
 
 const DEFAULT_MUTEX_TIMEOUT_MS = 90_000;
@@ -28,8 +29,10 @@ export async function withMutex<T>(
     try { await pending; } catch { /* previous op failed — proceed */ }
   }
 
-  // Wrap fn() in a timeout so a hung operation (RPC stall, MongoDB connection
-  // drop) doesn't hold the lock forever.
+  // The lock follows fn()'s lifecycle — it is only released when fn() truly
+  // settles (success or failure). The timeout races against fn() for the
+  // CALLER's benefit only: if fn() takes too long the caller gets a rejection,
+  // but the lock stays held, preventing overlapping critical sections.
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(
@@ -38,12 +41,11 @@ export async function withMutex<T>(
     );
   });
 
-  const promise = Promise.race([fn(), timeoutPromise])
-    .finally(() => {
-      clearTimeout(timeoutId);
-      if (locks.get(key) === promise) locks.delete(key);
-    });
+  const opPromise = fn().finally(() => {
+    clearTimeout(timeoutId);
+    if (locks.get(key) === opPromise) locks.delete(key);
+  });
 
-  locks.set(key, promise);
-  return promise;
+  locks.set(key, opPromise);
+  return Promise.race([opPromise, timeoutPromise]);
 }

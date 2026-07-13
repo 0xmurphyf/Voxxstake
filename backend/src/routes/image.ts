@@ -153,11 +153,72 @@ router.get('/:objectId', async (req: Request, res: Response) => {
     }
 
     const contentType = imageRes.headers.get('content-type') || 'image/png';
-    const arrayBuf = await imageRes.arrayBuffer();
-    const buffer = Buffer.from(arrayBuf);
+
+    // Enforce raster-only Content-Type. The remote server's Content-Type is
+    // attacker-controllable (NFT metadata → image_url → any server). SVG,
+    // text/html, and other non-raster types can contain executable JS and
+    // must never be served from our origin with their original Content-Type.
+    // mimeToExt() only controls the on-disk filename — the HTTP response
+    // Content-Type must be independently validated.
+    const ALLOWED_CONTENT_TYPES = new Set([
+      'image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp', 'image/avif',
+    ]);
+    if (!ALLOWED_CONTENT_TYPES.has(contentType)) {
+      console.warn(`[Image] Refusing non-raster Content-Type "${contentType}" for object ${objectId.slice(0, 10)}...`);
+      res.set('Content-Type', 'image/png');
+      res.set('Cache-Control', 'public, max-age=3600');
+      res.send(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64'));
+      return;
+    }
+
+    // Normalise image/jpg → image/jpeg for consistency
+    const safeContentType = contentType === 'image/jpg' ? 'image/jpeg' : contentType;
+
+    // Stream the response with a size cap — attacker-controlled NFT image_url
+    // could point to a multi-GB resource, causing memory exhaustion.
+    const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB
+    const reader = imageRes.body?.getReader();
+    let buffer: Buffer;
+    if (reader) {
+      const chunks: Uint8Array[] = [];
+      let received = 0;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          received += value.byteLength;
+          if (received > MAX_IMAGE_BYTES) {
+            await reader.cancel();
+            console.warn(`[Image] Image too large (${(received / 1024 / 1024).toFixed(1)} MB) for object ${objectId.slice(0, 10)}...`);
+            res.set('Content-Type', 'image/png');
+            res.set('Cache-Control', 'public, max-age=3600');
+            res.send(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64'));
+            return;
+          }
+          chunks.push(value);
+        }
+      } catch (err) {
+        console.error(`[Image] Stream read error for ${objectId.slice(0, 10)}...:`, err);
+        res.set('Content-Type', 'image/png');
+        res.set('Cache-Control', 'public, max-age=3600');
+        res.send(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64'));
+        return;
+      }
+      buffer = Buffer.concat(chunks);
+    } else {
+      // Fallback for responses without a readable body (unlikely for images)
+      const arrayBuf = await imageRes.arrayBuffer();
+      if (arrayBuf.byteLength > MAX_IMAGE_BYTES) {
+        res.set('Content-Type', 'image/png');
+        res.set('Cache-Control', 'public, max-age=3600');
+        res.send(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64'));
+        return;
+      }
+      buffer = Buffer.from(arrayBuf);
+    }
 
     // 5. Determine file extension
-    const ext = mimeToExt(contentType);
+    const ext = mimeToExt(safeContentType);
     const filename = `${hash}.${ext}`;
     const filePath = path.join(CACHE_DIR, filename);
 
@@ -165,8 +226,9 @@ router.get('/:objectId', async (req: Request, res: Response) => {
     fs.writeFileSync(filePath, buffer);
     cacheSet(objectId, filename);
 
-    // 7. Serve — cache forever (images are immutable by objectId)
-    res.set('Content-Type', contentType);
+    // 7. Serve — cache forever (images are immutable by objectId).
+    //    Content-Type is the validated & normalised safe type, NOT the upstream value.
+    res.set('Content-Type', safeContentType);
     res.set('Cache-Control', 'public, max-age=31536000, immutable');
     res.send(buffer);
   } catch (err) {

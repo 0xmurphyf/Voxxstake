@@ -89,15 +89,38 @@ router.post('/nonce', async (req: Request, res: Response) => {
         typeof err === 'object' &&
         (err as Record<string, unknown>).code === 11000
       ) {
-        // Race lost — read the winner's nonce and return THAT to the client.
+        // Race lost — read the winner's nonce and check freshness.
         const existing = await Nonce.findOne({ address: normalized, used: false }).lean();
         if (existing) {
-          res.json({ nonce: existing.nonce, address: normalized });
-          return;
+          const age = (Date.now() - existing.created_at.getTime()) / 1000;
+          if (age <= NONCE_EXPIRY_SECONDS) {
+            // Winner's nonce is fresh — return it to the client.
+            res.json({ nonce: existing.nonce, address: normalized });
+            return;
+          }
+          // Winner's nonce is stale — delete it so we can create a fresh one.
+          await Nonce.deleteOne({ _id: existing._id });
         }
-        // Edge case: existing nonce expired / was TTL-deleted between E11000
-        // and our read. Retry the insert (rare, guarded by throttle).
-        await Nonce.create({ address: normalized, nonce, created_at: new Date() });
+        // Retry insert (existing was stale or TTL-deleted between E11000 and read).
+        // Wrapped in try/catch in case a 3rd concurrent request inserts between
+        // our delete and create — rare but possible under concurrent load.
+        try {
+          await Nonce.create({ address: normalized, nonce, created_at: new Date() });
+        } catch (e2: unknown) {
+          if (
+            e2 &&
+            typeof e2 === 'object' &&
+            (e2 as Record<string, unknown>).code === 11000
+          ) {
+            const again = await Nonce.findOne({ address: normalized, used: false }).lean();
+            if (again) {
+              res.json({ nonce: again.nonce, address: normalized });
+              return;
+            }
+          } else {
+            throw e2;
+          }
+        }
       } else {
         throw err;
       }
