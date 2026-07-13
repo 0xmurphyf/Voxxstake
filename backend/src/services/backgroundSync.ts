@@ -24,6 +24,8 @@ const SYNC_INTERVAL_MS =
 // blocking the entire loop (cascading failure). Must be longer than the mutex
 // timeout (90s) so the mutex has a chance to release first.
 const PER_ADDRESS_SYNC_TIMEOUT_MS = 120_000;
+const TARGETED_MUTEX_TIMEOUT_MS = 300_000;
+const TARGETED_SYNC_TIMEOUT_MS = 330_000;
 
 let syncTimer: ReturnType<typeof setInterval> | null = null;
 let activeSync: Promise<SyncReport> | null = null;
@@ -33,29 +35,40 @@ export interface SyncReport {
   updated: number;
   errors: number;
   elapsed_ms: number;
+  failures: Array<{ address: string; error: string }>;
 }
 
 /**
  * Sync all registered addresses' on-chain NFT holdings with the database.
  */
-async function runSyncAllAddresses(): Promise<SyncReport> {
+async function runSyncAddresses(requestedAddresses?: string[]): Promise<SyncReport> {
   const startTime = Date.now();
   let addressCount = 0;
   let updated = 0;
   let errors = 0;
+  const failures: Array<{ address: string; error: string }> = [];
   try {
-    // Scan every registered wallet, including profiles whose first successful
-    // chain scan has not created a Stake row yet. Stake-only legacy wallets are
-    // retained as well.
-    const [profileAddresses, stakeAddresses] = await Promise.all([
-      Profile.distinct('address'),
-      Stake.distinct('address'),
-    ]);
-    const addresses = [...new Set([...profileAddresses, ...stakeAddresses]
+    let sourceAddresses: string[];
+    if (requestedAddresses) {
+      sourceAddresses = requestedAddresses;
+    } else {
+      // Scan every registered wallet, including profiles whose first successful
+      // chain scan has not created a Stake row yet. Stake-only legacy wallets are
+      // retained as well.
+      const [profileAddresses, stakeAddresses] = await Promise.all([
+        Profile.distinct('address'),
+        Stake.distinct('address'),
+      ]);
+      sourceAddresses = [...profileAddresses, ...stakeAddresses];
+    }
+    const addresses = [...new Set(sourceAddresses
       .filter((address): address is string => typeof address === 'string' && address.length > 0)
       .map((address) => address.toLowerCase()))];
+    const targeted = requestedAddresses !== undefined;
+    const mutexTimeoutMs = targeted ? TARGETED_MUTEX_TIMEOUT_MS : undefined;
+    const perAddressTimeoutMs = targeted ? TARGETED_SYNC_TIMEOUT_MS : PER_ADDRESS_SYNC_TIMEOUT_MS;
     addressCount = addresses.length;
-    console.log(`[BG Sync] Starting sync for ${addresses.length} addresses`);
+    console.log(`[BG Sync] Starting ${targeted ? 'targeted' : 'full'} sync for ${addresses.length} addresses`);
 
     for (const address of addresses) {
       let perAddrTimer: ReturnType<typeof setTimeout> | undefined;
@@ -67,7 +80,7 @@ async function runSyncAllAddresses(): Promise<SyncReport> {
         const perAddrTimeout = new Promise<never>((_, reject) => {
           perAddrTimer = setTimeout(
             () => reject(new Error(`BG sync timeout for ${address.slice(0, 10)}...`)),
-            PER_ADDRESS_SYNC_TIMEOUT_MS
+            perAddressTimeoutMs
           );
         });
 
@@ -179,13 +192,17 @@ async function runSyncAllAddresses(): Promise<SyncReport> {
             { upsert: true }
           );
         }
-          }), // withMutex
+          }, mutexTimeoutMs), // withMutex
           perAddrTimeout,
         ]);
 
         updated++;
       } catch (err) {
         errors++;
+        failures.push({
+          address,
+          error: err instanceof Error ? err.message : 'Unknown sync error',
+        });
         console.error(`[BG Sync] Error syncing ${address}:`, err);
       } finally {
         if (perAddrTimer) clearTimeout(perAddrTimer);
@@ -209,6 +226,10 @@ async function runSyncAllAddresses(): Promise<SyncReport> {
   } catch (err) {
     console.error('[BG Sync] Fatal error:', err);
     errors++;
+    failures.push({
+      address: requestedAddresses?.[0] || 'all',
+      error: err instanceof Error ? err.message : 'Fatal sync error',
+    });
   }
 
   return {
@@ -216,6 +237,7 @@ async function runSyncAllAddresses(): Promise<SyncReport> {
     updated,
     errors,
     elapsed_ms: Date.now() - startTime,
+    failures,
   };
 }
 
@@ -229,7 +251,7 @@ async function syncAllAddresses(): Promise<SyncReport> {
     return activeSync;
   }
 
-  activeSync = runSyncAllAddresses();
+  activeSync = runSyncAddresses();
   try {
     return await activeSync;
   } finally {
@@ -382,4 +404,9 @@ async function rebuildRankingSnapshot(): Promise<void> {
  */
 export async function triggerSync(): Promise<SyncReport> {
   return syncAllAddresses();
+}
+
+/** Scan one operator-selected wallet without waiting for every registered user. */
+export async function triggerAddressSync(address: string): Promise<SyncReport> {
+  return runSyncAddresses([address]);
 }

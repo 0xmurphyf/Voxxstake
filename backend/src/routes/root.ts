@@ -6,7 +6,7 @@ import { Profile } from '../models/Profile';
 import { Stake } from '../models/Stake';
 import { StakeSummary } from '../models/StakeSummary';
 import { Nonce } from '../models/Nonce';
-import { SyncReport, triggerSync } from '../services/backgroundSync';
+import { SyncReport, triggerAddressSync, triggerSync } from '../services/backgroundSync';
 
 const router = Router();
 
@@ -234,6 +234,7 @@ type FullScanJob = {
   finished_at?: string;
   report?: SyncReport;
   error?: string;
+  target_address?: string;
 };
 
 let fullScanJob: FullScanJob | null = null;
@@ -244,8 +245,24 @@ let fullScanJob: FullScanJob | null = null;
 router.post('/full-scan', async (req: Request, res: Response) => {
   if (!requireRoot(req, res)) return;
 
+  const rawAddress = req.body?.address;
+  const requestedAddress = typeof rawAddress === 'string' ? rawAddress.trim().toLowerCase() : '';
+  if (rawAddress !== undefined && rawAddress !== '' && typeof rawAddress !== 'string') {
+    safeJson(res, 400, { detail: 'Address must be a string' });
+    return;
+  }
+  if (requestedAddress && !/^0x[0-9a-f]{64}$/.test(requestedAddress)) {
+    safeJson(res, 400, { detail: 'Enter a complete 0x + 64 hex Sui address' });
+    return;
+  }
+
   if (fullScanJob?.status === 'running') {
-    safeJson(res, 202, { ok: true, job: fullScanJob });
+    const sameTarget = (fullScanJob.target_address || '') === requestedAddress;
+    if (sameTarget) {
+      safeJson(res, 202, { ok: true, job: fullScanJob });
+    } else {
+      safeJson(res, 409, { detail: 'Another File Z scan is already running', job: fullScanJob });
+    }
     return;
   }
 
@@ -253,10 +270,15 @@ router.post('/full-scan', async (req: Request, res: Response) => {
     id: crypto.randomUUID(),
     status: 'running',
     started_at: new Date().toISOString(),
+    ...(requestedAddress ? { target_address: requestedAddress } : {}),
   };
   fullScanJob = job;
 
-  triggerSync()
+  const scanPromise = requestedAddress
+    ? triggerAddressSync(requestedAddress)
+    : triggerSync();
+
+  scanPromise
     .then((report) => {
       // A few RPC failures should not hide successful wallet updates. Report a
       // hard failure only when nothing could be updated at all.

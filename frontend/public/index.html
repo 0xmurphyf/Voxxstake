@@ -1814,16 +1814,33 @@
 
         const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+        function updateFileZScanButton() {
+            const btn = document.getElementById('filez-full-scan');
+            const q = document.getElementById('filez-q');
+            if (!btn || !q || btn.disabled) return;
+            btn.textContent = q.value.trim() ? 'SCAN ADDRESS' : 'FULL CHAIN SCAN';
+        }
+
         async function triggerFileZFullScan() {
             if (!rootToken) { lockFileZ(); return; }
             const btn = document.getElementById('filez-full-scan');
             const resultsEl = document.getElementById('filez-results');
-            btn.textContent = 'SCANNING CHAIN…';
+            const address = document.getElementById('filez-q').value.trim();
+            if (address && !/^0x[0-9a-fA-F]{64}$/.test(address)) {
+                resultsEl.innerHTML = '<span style="color:#f55;">ENTER A COMPLETE 0x + 64 HEX SUI ADDRESS TO SCAN ONE USER.</span>';
+                return;
+            }
+            const targeted = Boolean(address);
+            btn.textContent = targeted ? 'SCANNING ADDRESS…' : 'SCANNING CHAIN…';
             btn.disabled = true;
             try {
                 let r = await fetch('/api/root/full-scan', {
                     method: 'POST',
-                    headers: { Authorization: 'Bearer ' + rootToken },
+                    headers: {
+                        Authorization: 'Bearer ' + rootToken,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(targeted ? { address } : {}),
                 });
                 if (r.status === 401 || r.status === 403) { lockFileZ(); return; }
                 let data = await r.json().catch(() => ({}));
@@ -1833,7 +1850,7 @@
                 while (job && job.status === 'running') {
                     const elapsed = Math.max(0, Math.floor((Date.now() - Date.parse(job.started_at)) / 1000));
                     btn.textContent = 'SCANNING… ' + elapsed + 's';
-                    resultsEl.innerHTML = '<span style="color:#7dff9b;">LIVE SUI SCAN IN PROGRESS — ' + elapsed + 's</span>';
+                    resultsEl.innerHTML = '<span style="color:#7dff9b;">' + (targeted ? 'ADDRESS' : 'FULL CHAIN') + ' SUI SCAN IN PROGRESS — ' + elapsed + 's</span>';
                     await wait(2000);
                     r = await fetch('/api/root/full-scan', {
                         headers: { Authorization: 'Bearer ' + rootToken },
@@ -1861,10 +1878,10 @@
                 resultsEl.innerHTML = '<span style="color:#f55;">' + escapeHtml(e.message || 'FULL CHAIN SCAN FAILED') + '</span>';
             } finally {
                 setTimeout(() => {
-                    btn.textContent = 'FULL CHAIN SCAN';
                     btn.style.borderColor = 'rgba(125,255,155,0.5)';
                     btn.style.color = '#7dff9b';
                     btn.disabled = false;
+                    updateFileZScanButton();
                 }, 2500);
             }
         }
@@ -1876,10 +1893,12 @@
             initAccessCounter();
             initLogoEasterEgg();
             const fzQuery = document.getElementById('filez-query');
+            const fzAddress = document.getElementById('filez-q');
             const fzSync = document.getElementById('filez-sync');
             const fzFullScan = document.getElementById('filez-full-scan');
             const fzLock = document.getElementById('filez-lock');
             if (fzQuery) fzQuery.addEventListener('click', queryFileZ);
+            if (fzAddress) fzAddress.addEventListener('input', updateFileZScanButton);
             if (fzSync) fzSync.addEventListener('click', triggerFileZSync);
             if (fzFullScan) fzFullScan.addEventListener('click', triggerFileZFullScan);
             if (fzLock) fzLock.addEventListener('click', lockFileZ);
