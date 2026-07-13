@@ -1867,10 +1867,19 @@
 
                 const report = job.report || {};
                 const hasErrors = (report.errors || 0) > 0;
-                btn.textContent = (hasErrors ? '⚠ ' : '✓ ') + (report.updated || 0) + '/' + (report.addresses || 0) + ' SCANNED';
+                const targetResult = targeted && Array.isArray(report.results) ? report.results[0] : null;
+                btn.textContent = targetResult
+                    ? '✓ ' + targetResult.nft_count + ' NFT'
+                    : (hasErrors ? '⚠ ' : '✓ ') + (report.updated || 0) + '/' + (report.addresses || 0) + ' SCANNED';
                 btn.style.borderColor = hasErrors ? '#ffc857' : '#0f0';
                 btn.style.color = hasErrors ? '#ffc857' : '#0f0';
                 await queryFileZ();
+                if (hasErrors && Array.isArray(report.failures)) {
+                    const failureText = report.failures
+                        .map(f => f.address + ': ' + f.error)
+                        .join('\n');
+                    resultsEl.insertAdjacentHTML('afterbegin', '<pre style="color:#f55; white-space:pre-wrap; margin-bottom:12px;">SCAN ERRORS:\n' + escapeHtml(failureText) + '</pre>');
+                }
             } catch (e) {
                 btn.textContent = '✗ SCAN FAILED';
                 btn.style.borderColor = '#f55';

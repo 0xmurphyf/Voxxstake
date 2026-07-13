@@ -36,6 +36,7 @@ export interface SyncReport {
   errors: number;
   elapsed_ms: number;
   failures: Array<{ address: string; error: string }>;
+  results: Array<{ address: string; nft_count: number }>;
 }
 
 /**
@@ -47,6 +48,7 @@ async function runSyncAddresses(requestedAddresses?: string[]): Promise<SyncRepo
   let updated = 0;
   let errors = 0;
   const failures: Array<{ address: string; error: string }> = [];
+  const results: Array<{ address: string; nft_count: number }> = [];
   try {
     let sourceAddresses: string[];
     if (requestedAddresses) {
@@ -84,10 +86,16 @@ async function runSyncAddresses(requestedAddresses?: string[]): Promise<SyncRepo
           );
         });
 
-        await Promise.race([
+        const addressResult = await Promise.race([
           withMutex(address, async () => {
         // Fetch owned NFTs from chain
-        const { objects: ownedNfts, kioskError } = await getOwnedObjects(address, VOXX_TYPE, true);
+        const { objects: ownedNfts, kioskError, kioskErrorMessage } = await getOwnedObjects(address, VOXX_TYPE, true);
+        // A direct-only partial result is not a valid ownership count. Treat it
+        // as a failed scan so File Z never reports zero merely because Kiosk RPC
+        // failed, and preserve the last complete StakeSummary unchanged.
+        if (kioskError) {
+          throw new Error(`Kiosk scan incomplete: ${kioskErrorMessage || 'unknown RPC error'}`);
+        }
         const ownedSet = new Set<string>();
         const ownedMeta = new Map<string, { name: string; image_url: string | null }>();
 
@@ -110,12 +118,7 @@ async function runSyncAddresses(requestedAddresses?: string[]): Promise<SyncRepo
         const existingStakes = await Stake.find({ address });
         const existingMap = new Map(existingStakes.map((s) => [s.object_id, s]));
 
-        // Preserve the last-known active count on a partial Kiosk scan. This
-        // keeps session multipliers stable until a complete scan succeeds.
-        const knownActiveCount = existingStakes.filter((s) => s.status === 'active').length;
-        const currentNftCount = kioskError
-          ? Math.max(ownedSet.size, knownActiveCount)
-          : ownedSet.size;
+        const currentNftCount = ownedSet.size;
         const currentMultiplier = getHoldingMultiplier(currentNftCount);
 
         // Activate owned NFTs
@@ -154,48 +157,44 @@ async function runSyncAddresses(requestedAddresses?: string[]): Promise<SyncRepo
           }
         }
 
-        // Pause sold/transferred NFTs — but only if Kiosk scan succeeded.
-        // If Kiosk scan failed, we might have missed NFTs → don't pause.
-        if (!kioskError) {
-          // currentNftCount / currentMultiplier already computed above.
-          for (const [objId, stake] of existingMap) {
-            if (!ownedSet.has(objId) && stake.status === 'active') {
-              let sessionSeconds = 0.0;
-              if (stake.current_session_start) {
-                const sessionStart = new Date(stake.current_session_start);
-                sessionSeconds = Math.max(0.0, (now.getTime() - sessionStart.getTime()) / 1000);
-              }
-              // Lock current session's points at the FROZEN session multiplier
-              const lockMult =
-                typeof stake.session_multiplier === 'number' && stake.session_multiplier > 0
-                  ? stake.session_multiplier
-                  : currentMultiplier;
-              const sessionHours = sessionSeconds / 3600;
-              const sessionPoints = Math.round(sessionHours * POINTS_PER_NFT_PER_HOUR * lockMult);
-              stake.locked_points = (stake.locked_points || 0) + sessionPoints;
-              stake.status = 'paused';
-              stake.current_session_start = null;
-              stake.total_staked_seconds = (stake.total_staked_seconds || 0.0) + sessionSeconds;
-              stake.last_synced = nowIso;
-              await stake.save();
+        // This point is reached only after a complete direct + Kiosk scan, so
+        // missing objects can safely be paused.
+        // currentNftCount / currentMultiplier already computed above.
+        for (const [objId, stake] of existingMap) {
+          if (!ownedSet.has(objId) && stake.status === 'active') {
+            let sessionSeconds = 0.0;
+            if (stake.current_session_start) {
+              const sessionStart = new Date(stake.current_session_start);
+              sessionSeconds = Math.max(0.0, (now.getTime() - sessionStart.getTime()) / 1000);
             }
+            // Lock current session's points at the FROZEN session multiplier
+            const lockMult =
+              typeof stake.session_multiplier === 'number' && stake.session_multiplier > 0
+                ? stake.session_multiplier
+                : currentMultiplier;
+            const sessionHours = sessionSeconds / 3600;
+            const sessionPoints = Math.round(sessionHours * POINTS_PER_NFT_PER_HOUR * lockMult);
+            stake.locked_points = (stake.locked_points || 0) + sessionPoints;
+            stake.status = 'paused';
+            stake.current_session_start = null;
+            stake.total_staked_seconds = (stake.total_staked_seconds || 0.0) + sessionSeconds;
+            stake.last_synced = nowIso;
+            await stake.save();
           }
-        } else if (existingMap.size > 0 && ownedSet.size === 0) {
-          console.warn(`[BG Sync] Kiosk scan failed for ${address.slice(0, 10)}... — 0 direct NFTs, ${existingMap.size} DB stakes preserved`);
         }
 
-        // Never overwrite complete ground truth with a direct-only partial scan.
-        if (!kioskError) {
-          await StakeSummary.findOneAndUpdate(
-            { address },
-            { $set: { nft_count: ownedSet.size, last_synced: new Date() } },
-            { upsert: true }
-          );
-        }
+        await StakeSummary.findOneAndUpdate(
+          { address },
+          { $set: { nft_count: ownedSet.size, last_synced: new Date() } },
+          { upsert: true }
+        );
+
+        return { address, nft_count: ownedSet.size };
           }, mutexTimeoutMs), // withMutex
           perAddrTimeout,
         ]);
 
+        results.push(addressResult);
         updated++;
       } catch (err) {
         errors++;
@@ -238,6 +237,7 @@ async function runSyncAddresses(requestedAddresses?: string[]): Promise<SyncRepo
     errors,
     elapsed_ms: Date.now() - startTime,
     failures,
+    results,
   };
 }
 

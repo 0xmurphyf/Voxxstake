@@ -285,7 +285,11 @@ router.post('/full-scan', async (req: Request, res: Response) => {
       job.status = report.errors > 0 && report.updated === 0 ? 'failed' : 'completed';
       job.report = report;
       job.finished_at = new Date().toISOString();
-      if (report.errors > 0) job.error = `${report.errors} address scan(s) failed`;
+      if (report.errors > 0) {
+        job.error = report.failures
+          .map((failure) => `${failure.address}: ${failure.error}`)
+          .join(' | ') || `${report.errors} address scan(s) failed`;
+      }
     })
     .catch((err) => {
       job.status = 'failed';

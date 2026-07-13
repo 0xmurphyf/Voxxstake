@@ -360,7 +360,11 @@ export async function getOwnedObjects(
   address: string,
   typeFilter?: string,
   lite: boolean = true
-): Promise<{ objects: Record<string, unknown>[]; kioskError: boolean }> {
+): Promise<{
+  objects: Record<string, unknown>[];
+  kioskError: boolean;
+  kioskErrorMessage: string | null;
+}> {
   // 1. Directly owned NFTs
   const direct = await getDirectlyOwnedObjects(address, typeFilter, lite);
 
@@ -368,12 +372,14 @@ export async function getOwnedObjects(
   //    items need to be filtered by type)
   let kiosk: Record<string, unknown>[] = [];
   let kioskError = false;
+  let kioskErrorMessage: string | null = null;
   if (typeFilter) {
     try {
       kiosk = await getKioskOwnedObjects(address, typeFilter);
     } catch (err) {
       console.error(`[Kiosk] Scan failed for ${address.slice(0, 10)}... — skipping Kiosk NFTs this round:`, err);
       kioskError = true;
+      kioskErrorMessage = err instanceof Error ? err.message : String(err);
     }
   }
 
@@ -390,7 +396,7 @@ export async function getOwnedObjects(
     }
   }
 
-  return { objects: merged, kioskError };
+  return { objects: merged, kioskError, kioskErrorMessage };
 }
 
 // ─── Verify VOXX ownership (direct or kiosk) ────────────────────
