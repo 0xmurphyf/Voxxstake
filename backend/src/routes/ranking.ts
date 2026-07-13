@@ -3,6 +3,7 @@ import { Stake } from '../models/Stake';
 import { Profile } from '../models/Profile';
 import { computeTotalActiveSeconds, computePoints, getHoldingMultiplier } from '../services/staking';
 import { IStake } from '../models/Stake';
+import { createThrottle } from '../services/throttle';
 
 const router = Router();
 
@@ -11,22 +12,15 @@ const router = Router();
 // base cheaply to harvest display names / truncated addresses (enumeration).
 // Single-instance in-memory (sufficient for Railway single replica).
 const RANKING_MIN_INTERVAL_MS = 1500;
-const rankingLastSeen = new Map<string, number>();
+const rankingThrottleGuard = createThrottle({ minIntervalMs: RANKING_MIN_INTERVAL_MS });
 
 function rankingThrottle(req: Request, res: Response): boolean {
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
-  const now = Date.now();
-  const last = rankingLastSeen.get(ip) || 0;
-  if (now - last < RANKING_MIN_INTERVAL_MS) {
+  if (!rankingThrottleGuard.allow(ip)) {
     res
       .status(429)
       .json({ detail: 'Too many ranking requests, slow down.', retry_after_seconds: Math.ceil(RANKING_MIN_INTERVAL_MS / 1000) });
     return false;
-  }
-  rankingLastSeen.set(ip, now);
-  if (rankingLastSeen.size % 200 === 0) {
-    const cutoff = now - RANKING_MIN_INTERVAL_MS * 4;
-    for (const [k, v] of rankingLastSeen) if (v < cutoff) rankingLastSeen.delete(k);
   }
   return true;
 }

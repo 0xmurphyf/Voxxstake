@@ -4,6 +4,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { getNftMetadata, extractImageUrl } from '../services/sui';
 import { assertSafeImageUrl } from '../services/ssrfGuard';
+import { createThrottle } from '../services/throttle';
 
 const router = Router();
 
@@ -19,29 +20,34 @@ if (!fs.existsSync(CACHE_DIR)) {
   fs.mkdirSync(CACHE_DIR, { recursive: true });
 }
 
-// In-memory cache of objectId → cached filename (survives within process lifetime)
+// In-memory cache of objectId → cached filename. LRU-evicted at 50k entries
+// to prevent unbounded growth over the process lifetime.
+const FILENAME_CACHE_MAX = 50_000;
 const filenameCache = new Map<string, string>();
+
+function cacheSet(key: string, value: string): void {
+  // Simple FIFO eviction when over limit — good enough for a cache where
+  // every entry is equally valuable (no hot/cold distinction).
+  if (filenameCache.size >= FILENAME_CACHE_MAX) {
+    const first = filenameCache.keys().next();
+    if (!first.done) filenameCache.delete(first.value);
+  }
+  filenameCache.set(key, value);
+}
 
 // ─── Per-IP rate limit for the image proxy ──────────────────────
 // No auth, no login — anyone can call this endpoint. Without a throttle it's
 // a free RPC-proxy: an attacker can enumerate random objectIds and burn our
-// Sui RPC quota. Capped at 5 req/s per IP (generous for normal use, tight
-// enough to prevent abuse).
+// Sui RPC quota. Capped at 5 req/s per IP.
 const IMAGE_MIN_INTERVAL_MS = 200; // 5 req/s
-const imageLastSeen = new Map<string, number>();
+const imageThrottle = createThrottle({ minIntervalMs: IMAGE_MIN_INTERVAL_MS });
 
-function imageThrottle(req: Request, res: Response): boolean {
+// ─── Per-IP rate limit wrapper that sends 429 on throttle ───────
+function checkImageThrottle(req: Request, res: Response): boolean {
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
-  const now = Date.now();
-  const last = imageLastSeen.get(ip) || 0;
-  if (now - last < IMAGE_MIN_INTERVAL_MS) {
+  if (!imageThrottle.allow(ip)) {
     res.status(429).json({ detail: 'Too many image requests, slow down.' });
     return false;
-  }
-  imageLastSeen.set(ip, now);
-  if (imageLastSeen.size % 500 === 0) {
-    const cutoff = now - IMAGE_MIN_INTERVAL_MS * 4;
-    for (const [k, v] of imageLastSeen) if (v < cutoff) imageLastSeen.delete(k);
   }
   return true;
 }
@@ -52,9 +58,19 @@ function imageThrottle(req: Request, res: Response): boolean {
  * Returns the image binary with correct Content-Type.
  */
 router.get('/:objectId', async (req: Request, res: Response) => {
-  if (!imageThrottle(req, res)) return;
+  if (!checkImageThrottle(req, res)) return;
   try {
     const { objectId } = req.params;
+
+    // Basic sanity check — a Sui object ID is a 66-char hex string (0x + 64 hex).
+    // Reject obviously invalid input before we hash it, query the chain, etc.
+    if (!/^0x[0-9a-fA-F]{64}$/.test(objectId)) {
+      // Still return an image so the frontend doesn't break — just the placeholder.
+      res.set('Content-Type', 'image/png');
+      res.set('Cache-Control', 'public, max-age=3600');
+      res.send(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64'));
+      return;
+    }
 
     // 1. Check in-memory cache
     const cachedFile = filenameCache.get(objectId);
@@ -82,7 +98,7 @@ router.get('/:objectId', async (req: Request, res: Response) => {
     }
     if (match) {
       const filePath = path.join(CACHE_DIR, match);
-      filenameCache.set(objectId, match);
+      cacheSet(objectId, match);
       return sendFile(res, filePath);
     }
 
@@ -147,7 +163,7 @@ router.get('/:objectId', async (req: Request, res: Response) => {
 
     // 6. Save to disk cache
     fs.writeFileSync(filePath, buffer);
-    filenameCache.set(objectId, filename);
+    cacheSet(objectId, filename);
 
     // 7. Serve — cache forever (images are immutable by objectId)
     res.set('Content-Type', contentType);

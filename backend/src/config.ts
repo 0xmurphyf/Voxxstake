@@ -46,8 +46,12 @@ export const config = {
     .split(',')
     .map(s => s.toLowerCase().trim())
     .filter(Boolean),
-  // Rate limiting: minimum seconds between sync calls per address
-  syncRateLimitSeconds: parseInt(process.env.SYNC_RATE_LIMIT_SEC || '60', 10),
+  // Rate limiting: minimum seconds between sync calls per address.
+  // Clamped to 10-300s so an operator can't accidentally set 0 (locking everyone
+  // out) or an absurdly high value (effectively disabling the limit).
+  syncRateLimitSeconds: Math.min(300, Math.max(10,
+    parseInt(process.env.SYNC_RATE_LIMIT_SEC || '60', 10) || 60
+  )),
   // Root terminal clearance password — gates the CLASSIFIED "FILE Z" data viewer.
   // MUST come from ROOT_TERMINAL_PASSWORD env var. Never hardcoded (the repo is
   // public). If null/empty, the root terminal endpoints fail closed (always denied).

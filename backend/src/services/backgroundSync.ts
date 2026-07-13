@@ -4,6 +4,7 @@ import { getOwnedObjects, extractImageUrl, extractNftName } from './sui';
 import { VOXX_TYPE, POINTS_PER_NFT_PER_HOUR } from '../types';
 import { getHoldingMultiplier } from './staking';
 import { config } from '../config';
+import { withMutex } from './mutex';
 
 /**
  * Background sync: periodically scans all registered addresses' NFTs
@@ -40,6 +41,7 @@ async function syncAllAddresses(): Promise<void> {
 
     for (const address of addresses) {
       try {
+        await withMutex(address, async () => {
         // Fetch owned NFTs from chain
         const { objects: ownedNfts, kioskError } = await getOwnedObjects(address, VOXX_TYPE, true);
         const ownedSet = new Set<string>();
@@ -142,6 +144,7 @@ async function syncAllAddresses(): Promise<void> {
           { $set: { nft_count: ownedSet.size, last_synced: new Date() } },
           { upsert: true }
         );
+        }); // withMutex
 
         updated++;
       } catch (err) {

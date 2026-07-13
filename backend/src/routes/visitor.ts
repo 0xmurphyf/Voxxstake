@@ -1,11 +1,12 @@
 import { Router, Response, Request } from 'express';
 import { Visitor } from '../models/Visitor';
+import { createThrottle } from '../services/throttle';
 
 const router = Router();
 
 // Per-IP throttle so the public counter can't be trivially inflated / abused.
-const visitorRateLimit = new Map<string, number>();
 const VISITOR_MIN_INTERVAL_MS = 2000;
+const visitorThrottle = createThrottle({ minIntervalMs: VISITOR_MIN_INTERVAL_MS });
 
 // Trust req.ip (derived from the trusted proxy via app.set('trust proxy', 1)),
 // NOT x-forwarded-for which a client can freely spoof. A spoofable IP would let
@@ -22,22 +23,12 @@ function clientIp(req: Request): string {
 router.get('/count', async (req: Request, res: Response) => {
   try {
     const ip = clientIp(req);
-    const now = Date.now();
-    const last = visitorRateLimit.get(ip) || 0;
 
-    if (now - last < VISITOR_MIN_INTERVAL_MS) {
+    if (!visitorThrottle.allow(ip)) {
       // Too frequent — return current count without incrementing.
       const doc = await Visitor.findOne({ _key: 'global' }).lean();
       res.json({ count: doc?.count || 0 });
       return;
-    }
-
-    visitorRateLimit.set(ip, now);
-    // Periodic cleanup of stale entries.
-    if (visitorRateLimit.size > 10000) {
-      for (const [k, t] of visitorRateLimit) {
-        if (now - t > 60000) visitorRateLimit.delete(k);
-      }
     }
 
     const doc = await Visitor.findOneAndUpdate(

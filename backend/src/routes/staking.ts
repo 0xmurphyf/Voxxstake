@@ -12,11 +12,23 @@ import {
 } from '../services/staking';
 import { VOXX_TYPE, POINTS_PER_NFT_PER_HOUR } from '../types';
 import { config } from '../config';
+import { withMutex } from '../services/mutex';
 
 const router = Router();
 
 // ─── In-memory rate-limit cache (per address, last sync timestamp) ──
+// Timer-based cleanup (60s) replaces the old "clean every 100 inserts" pattern.
 const syncRateLimitMap = new Map<string, number>();
+
+// Timer-based cleanup: every 60s, evict entries older than 2x the rate limit.
+// unref so the timer doesn't keep the process alive in test environments.
+const syncRateLimitCleanup = setInterval(() => {
+  const cutoff = Date.now() - config.syncRateLimitSeconds * 1000 * 2;
+  for (const [key, ts] of syncRateLimitMap) {
+    if (ts < cutoff) syncRateLimitMap.delete(key);
+  }
+}, 60_000);
+if (syncRateLimitCleanup.unref) syncRateLimitCleanup.unref();
 
 function checkSyncRateLimit(address: string): boolean {
   const lastSync = syncRateLimitMap.get(address);
@@ -27,13 +39,6 @@ function checkSyncRateLimit(address: string): boolean {
 
 function setSyncRateLimit(address: string): void {
   syncRateLimitMap.set(address, Date.now());
-  // Periodically clean old entries (every 100 sets)
-  if (syncRateLimitMap.size % 100 === 0) {
-    const cutoff = Date.now() - config.syncRateLimitSeconds * 1000 * 2;
-    for (const [key, ts] of syncRateLimitMap) {
-      if (ts < cutoff) syncRateLimitMap.delete(key);
-    }
-  }
 }
 
 /**
@@ -205,7 +210,7 @@ router.post('/sync', authMiddleware, async (req: AuthRequest, res: Response) => 
   }
 
   try {
-    const { ownedMap, sellAlerts } = await syncStakesForAddress(address);
+    const { ownedMap, sellAlerts } = await withMutex(address, () => syncStakesForAddress(address));
 
     // Only set the rate limit AFTER a successful sync. If the chain call
     // fails (RPC timeout, etc.), the user can retry immediately instead of
@@ -288,7 +293,7 @@ router.get('/positions', authMiddleware, async (req: AuthRequest, res: Response)
   }
 
   try {
-    const { ownedMap, sellAlerts } = await syncStakesForAddress(address);
+    const { ownedMap, sellAlerts } = await withMutex(address, () => syncStakesForAddress(address));
 
     // Only set the rate limit AFTER a successful sync.
     setSyncRateLimit(address);
@@ -329,10 +334,40 @@ router.get('/positions', authMiddleware, async (req: AuthRequest, res: Response)
 });
 
 // ─── GET /api/staking/nft/:objectId ─────────────────────────────
+// Validate objectId format before hitting the RPC — prevents quota waste
+// from malformed or fuzzed object IDs.
+const SUI_OBJECT_ID_RE = /^0x[0-9a-fA-F]{64}$/;
+
+// Per-user throttle for NFT detail — prevents an authenticated attacker from
+// enumerating objectIds rapidly and burning RPC quota. 500ms cooldown.
+const nftDetailLastSeen = new Map<string, number>();
+const NFT_DETAIL_MIN_INTERVAL_MS = 500;
+
 router.get('/nft/:objectId', authMiddleware, async (req: AuthRequest, res: Response) => {
+  const address = req.address!;
+
+  // Per-user rate limit
+  const now = Date.now();
+  const last = nftDetailLastSeen.get(address) || 0;
+  if (now - last < NFT_DETAIL_MIN_INTERVAL_MS) {
+    res.status(429).json({ detail: 'Too many NFT detail requests, slow down.' });
+    return;
+  }
+  nftDetailLastSeen.set(address, now);
+  // Timer-based cleanup
+  if (nftDetailLastSeen.size % 200 === 0) {
+    const cutoff = now - NFT_DETAIL_MIN_INTERVAL_MS * 4;
+    for (const [k, v] of nftDetailLastSeen) if (v < cutoff) nftDetailLastSeen.delete(k);
+  }
+
   try {
     const address = req.address!;
     const { objectId } = req.params;
+
+    if (!SUI_OBJECT_ID_RE.test(objectId)) {
+      res.status(400).json({ detail: 'Invalid Sui object ID format' });
+      return;
+    }
 
     const metadata = await getNftMetadata(objectId);
 

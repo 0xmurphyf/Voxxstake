@@ -5,6 +5,7 @@ import { Nonce } from '../models/Nonce';
 import { Profile } from '../models/Profile';
 import { verifySignature } from '../services/sui';
 import { config } from '../config';
+import { createThrottle } from '../services/throttle';
 import { NONCE_EXPIRY_SECONDS, JWT_EXPIRY_HOURS, JWT_ALGORITHM } from '../types';
 
 const router = Router();
@@ -12,9 +13,9 @@ const router = Router();
 // ─── Per-IP throttle for auth endpoints (nonce/verify) ──────────
 // Prevents unauthenticated DB-write amplification via /nonce spam and
 // brute-force-ish /verify hammering. Single-instance in-memory (sufficient
-// for Railway single-replica; see low-risk note about multi-instance).
+// for Railway single-replica).
 const AUTH_MIN_INTERVAL_MS = 3000;
-const authLastSeen = new Map<string, number>();
+const authThrottleGuard = createThrottle({ minIntervalMs: AUTH_MIN_INTERVAL_MS });
 
 // Use Express's req.ip, which is correctly derived from the trusted proxy
 // (app.set('trust proxy', 1) in index.ts). Reading x-forwarded-for directly
@@ -26,18 +27,11 @@ function clientIp(req: Request): string {
 
 function authThrottle(req: Request, res: Response): boolean {
   const ip = clientIp(req);
-  const now = Date.now();
-  const last = authLastSeen.get(ip) || 0;
-  if (now - last < AUTH_MIN_INTERVAL_MS) {
+  if (!authThrottleGuard.allow(ip)) {
     res
       .status(429)
       .json({ detail: 'Too many auth requests, slow down.', retry_after_seconds: Math.ceil(AUTH_MIN_INTERVAL_MS / 1000) });
     return false;
-  }
-  authLastSeen.set(ip, now);
-  if (authLastSeen.size % 100 === 0) {
-    const cutoff = now - AUTH_MIN_INTERVAL_MS * 2;
-    for (const [k, v] of authLastSeen) if (v < cutoff) authLastSeen.delete(k);
   }
   return true;
 }
@@ -79,12 +73,33 @@ router.post('/nonce', async (req: Request, res: Response) => {
 
     // Atomically upsert: if an unused nonce exists for this address, replace it;
     // otherwise insert a new one. The unique partial index on { address, used: false }
-    // (see models/Nonce.ts) guarantees this is race-free at the DB level.
-    await Nonce.findOneAndUpdate(
-      { address: normalized, used: false },
-      { $set: { nonce, created_at: new Date() } },
-      { upsert: true, new: true }
-    );
+    // (see models/Nonce.ts) guarantees at most one unused nonce per address.
+    //
+    // In the rare case where two concurrent /nonce calls both attempt to insert
+    // (because neither found an existing unused nonce), the second one hits a
+    // duplicate-key error (E11000). We catch that and retry as a plain update.
+    try {
+      await Nonce.findOneAndUpdate(
+        { address: normalized, used: false },
+        { $set: { nonce, created_at: new Date() } },
+        { upsert: true, new: true }
+      );
+    } catch (err: unknown) {
+      // MongoDB duplicate key error — another request beat us to the insert.
+      // Retry as a plain update (the document now exists).
+      if (
+        err &&
+        typeof err === 'object' &&
+        (err as Record<string, unknown>).code === 11000
+      ) {
+        await Nonce.updateOne(
+          { address: normalized, used: false },
+          { $set: { nonce, created_at: new Date() } }
+        );
+      } else {
+        throw err;
+      }
+    }
 
     res.json({ nonce });
   } catch (err) {

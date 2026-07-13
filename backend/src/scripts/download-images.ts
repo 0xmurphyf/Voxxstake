@@ -39,9 +39,12 @@ type DownloadResult = 'cached' | 'downloaded' | 'failed';
 async function downloadImage(objectId: string): Promise<DownloadResult> {
   const hash = crypto.createHash('md5').update(objectId).digest('hex');
 
-  // Skip if already cached on disk
-  const existing = fs.readdirSync(CACHE_DIR).filter(f => f.startsWith(hash));
-  if (existing.length > 0) {
+  // Skip if already cached on disk — probe known extensions directly instead
+  // of scanning the whole directory with readdirSync (which blocks the event
+  // loop when the cache grows large, especially in --watch mode).
+  const exts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif'];
+  const alreadyCached = exts.some(ext => fs.existsSync(path.join(CACHE_DIR, `${hash}.${ext}`)));
+  if (alreadyCached) {
     return 'cached';
   }
 
