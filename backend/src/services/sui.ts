@@ -241,25 +241,54 @@ async function getKioskOwnedObjects(
     return nestedFor || null;
   };
 
-    // 1. Find all KioskOwnerCap and PersonalKioskCap objects owned by the
-    //    address. We do a single unfiltered scan of all owned objects (with
-    //    full content) and extract Kiosk IDs from any cap-like structures.
-    //    This covers both:
-    //      - Standard KioskOwnerCap (type 0x2::kiosk::KioskOwnerCap)
-    //        → kiosk ID is in content.fields.for
-    //      - PersonalKioskCap (type <pkg>::personal_kiosk::PersonalKioskCap)
-    //        → kiosk ID is nested in content.fields.cap.fields.for
+    // 1. Find all KioskOwnerCap objects owned by the address.
+    //    We MUST use a typed StructType filter — suix_getOwnedObjects with
+    //    filter: null does NOT return content.fields, so extractKioskId would
+    //    always return null. With the type filter, content IS returned.
     //
-    //    Performance note: for most users this is a single RPC call. For whales
-    //    with thousands of objects it can be paginated, but the overhead is
-    //    acceptable compared to the alternative of missing Kiosk-owned NFTs.
-    const allCaps = await getDirectlyOwnedObjects(address, undefined, false);
+    //    This covers standard KioskOwnerCap (0x2::kiosk::KioskOwnerCap).
+    //    PersonalKioskCap lives under a different package whose ID varies by
+    //    deployment, so we discover those via sui_multiGetObjects type scan.
+    const kioskOwnerCaps = await getDirectlyOwnedObjects(
+      address,
+      '0x2::kiosk::KioskOwnerCap',
+      false
+    );
 
-    // Extract unique Kiosk IDs from all cap wrappers
     const kioskIds = new Set<string>();
-    for (const wrapper of allCaps) {
+    const personalKioskCandidateIds: string[] = [];
+
+    for (const wrapper of kioskOwnerCaps) {
       const kid = extractKioskId(wrapper);
-      if (kid) kioskIds.add(kid);
+      if (kid) {
+        kioskIds.add(kid);
+      } else {
+        // Might be a PersonalKioskCap — KioskOwnerCap type filter can match
+        // PersonalKioskCap because it wraps KioskOwnerCap internally, but
+        // the kiosk ID is nested deeper (fields.cap.fields.for). We'll
+        // batch-fetch these candidates via multiGetObjects to discover the
+        // PersonalKioskCap package and extract the real kiosk ID.
+        const objId = ((wrapper as Record<string, unknown>).data as Record<string, unknown>)?.objectId as string | undefined;
+        if (objId) personalKioskCandidateIds.push(objId);
+      }
+    }
+
+    // Resolve PersonalKioskCap candidates — batch-fetch their full content
+    if (personalKioskCandidateIds.length > 0) {
+      const batchResult = (await rpcCall('sui_multiGetObjects', [
+        personalKioskCandidateIds,
+        { showContent: true },
+      ])) as Array<Record<string, unknown>>;
+
+      for (const obj of batchResult) {
+        const data = obj?.data as Record<string, unknown> | undefined;
+        const contentType = data?.type as string | undefined;
+        // PersonalKioskCap type contains "::personal_kiosk::PersonalKioskCap"
+        if (contentType && contentType.includes('::personal_kiosk::PersonalKioskCap')) {
+          const kid = extractKioskId(obj);
+          if (kid) kioskIds.add(kid);
+        }
+      }
     }
 
     for (const kioskId of kioskIds) {
