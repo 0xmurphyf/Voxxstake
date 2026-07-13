@@ -131,6 +131,8 @@ async function runSyncAddresses(requestedAddresses?: string[]): Promise<SyncRepo
         for (const [objId, meta] of ownedMeta) {
           const existing = existingMap.get(objId);
           if (existing) {
+            // Always update address — NFT may have transferred from another wallet.
+            existing.address = address;
             if (existing.status === 'paused') {
               existing.status = 'active';
               existing.current_session_start = nowIso;
@@ -332,6 +334,13 @@ async function rebuildRankingSnapshot(): Promise<void> {
     stakesByAddress.set(key, existing);
   }
 
+  // Also load StakeSummary for on-chain NFT counts (more reliable than stake status)
+  const allSummaries = await StakeSummary.find({}).lean();
+  const summaryMap = new Map<string, number>();
+  for (const s of allSummaries) {
+    summaryMap.set(s.address.toLowerCase(), s.nft_count || 0);
+  }
+
   // Build entries from profiles (every authenticated user)
   const entries: Array<{
     address: string;
@@ -347,7 +356,11 @@ async function rebuildRankingSnapshot(): Promise<void> {
     const address = p.address.toLowerCase();
     const stakes = stakesByAddress.get(address) || [];
     const activeStakes = stakes.filter(s => s.status === 'active');
-    const nftCount = activeStakes.length;
+    // Prefer StakeSummary.nft_count (on-chain truth) over activeStakes.length.
+    // activeStakes may be stale if stake records weren't properly re-assigned
+    // after an NFT transfer between wallets.
+    const onChainCount = summaryMap.get(address) ?? 0;
+    const nftCount = Math.max(activeStakes.length, onChainCount);
     const multiplier = getHoldingMultiplier(nftCount);
 
     let totalCredits = 0;
@@ -377,7 +390,8 @@ async function rebuildRankingSnapshot(): Promise<void> {
   for (const [address, stakes] of stakesByAddress) {
     if (profileAddresses.has(address)) continue;
     const activeStakes = stakes.filter(s => s.status === 'active');
-    const nftCount = activeStakes.length;
+    const onChainCount = summaryMap.get(address) ?? 0;
+    const nftCount = Math.max(activeStakes.length, onChainCount);
     const multiplier = getHoldingMultiplier(nftCount);
 
     let totalCredits = 0;
