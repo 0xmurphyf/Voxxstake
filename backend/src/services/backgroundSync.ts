@@ -26,26 +26,36 @@ const SYNC_INTERVAL_MS =
 const PER_ADDRESS_SYNC_TIMEOUT_MS = 120_000;
 
 let syncTimer: ReturnType<typeof setInterval> | null = null;
-let isSyncing = false;
+let activeSync: Promise<SyncReport> | null = null;
+
+export interface SyncReport {
+  addresses: number;
+  updated: number;
+  errors: number;
+  elapsed_ms: number;
+}
 
 /**
  * Sync all registered addresses' on-chain NFT holdings with the database.
  */
-async function syncAllAddresses(): Promise<void> {
-  if (isSyncing) {
-    console.log('[BG Sync] Previous sync still in progress, skipping');
-    return;
-  }
-
-  isSyncing = true;
+async function runSyncAllAddresses(): Promise<SyncReport> {
   const startTime = Date.now();
+  let addressCount = 0;
+  let updated = 0;
+  let errors = 0;
   try {
-    // Get all unique addresses that have ever staked
-    const addresses = await Stake.distinct('address');
+    // Scan every registered wallet, including profiles whose first successful
+    // chain scan has not created a Stake row yet. Stake-only legacy wallets are
+    // retained as well.
+    const [profileAddresses, stakeAddresses] = await Promise.all([
+      Profile.distinct('address'),
+      Stake.distinct('address'),
+    ]);
+    const addresses = [...new Set([...profileAddresses, ...stakeAddresses]
+      .filter((address): address is string => typeof address === 'string' && address.length > 0)
+      .map((address) => address.toLowerCase()))];
+    addressCount = addresses.length;
     console.log(`[BG Sync] Starting sync for ${addresses.length} addresses`);
-
-    let updated = 0;
-    let errors = 0;
 
     for (const address of addresses) {
       let perAddrTimer: ReturnType<typeof setTimeout> | undefined;
@@ -198,8 +208,32 @@ async function syncAllAddresses(): Promise<void> {
     }
   } catch (err) {
     console.error('[BG Sync] Fatal error:', err);
+    errors++;
+  }
+
+  return {
+    addresses: addressCount,
+    updated,
+    errors,
+    elapsed_ms: Date.now() - startTime,
+  };
+}
+
+/**
+ * Return the active full scan when one is already running. This lets File Z
+ * wait for the real result instead of starting a duplicate RPC-heavy scan.
+ */
+async function syncAllAddresses(): Promise<SyncReport> {
+  if (activeSync) {
+    console.log('[BG Sync] Joining sync already in progress');
+    return activeSync;
+  }
+
+  activeSync = runSyncAllAddresses();
+  try {
+    return await activeSync;
   } finally {
-    isSyncing = false;
+    activeSync = null;
   }
 }
 
@@ -346,6 +380,6 @@ async function rebuildRankingSnapshot(): Promise<void> {
 /**
  * Trigger an immediate sync (useful for testing or admin commands).
  */
-export async function triggerSync(): Promise<void> {
-  await syncAllAddresses();
+export async function triggerSync(): Promise<SyncReport> {
+  return syncAllAddresses();
 }

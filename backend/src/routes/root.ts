@@ -4,8 +4,9 @@ import jwt from 'jsonwebtoken';
 import { config } from '../config';
 import { Profile } from '../models/Profile';
 import { Stake } from '../models/Stake';
+import { StakeSummary } from '../models/StakeSummary';
 import { Nonce } from '../models/Nonce';
-import { triggerSync } from '../services/backgroundSync';
+import { SyncReport, triggerSync } from '../services/backgroundSync';
 
 const router = Router();
 
@@ -182,19 +183,25 @@ router.get('/query', async (req: Request, res: Response) => {
       .limit(limit)
       .lean();
 
-    // For profiles view, enrich with NFT count from stakes collection
+    // File Z should show the last complete on-chain scan, not the number of
+    // historical Stake documents. Fall back to active stakes only for wallets
+    // that have never completed a scan.
     if (view === 'profiles' && rows.length > 0) {
       const addresses = rows.map((r: any) => r.address);
-      const stakeCounts = await Stake.aggregate([
-        { $match: { address: { $in: addresses } } },
-        { $group: { _id: '$address', nft_count: { $sum: 1 } } },
+      const [summaries, activeStakeCounts] = await Promise.all([
+        StakeSummary.find({ address: { $in: addresses } }).lean(),
+        Stake.aggregate([
+          { $match: { address: { $in: addresses }, status: 'active' } },
+          { $group: { _id: '$address', nft_count: { $sum: 1 } } },
+        ]),
       ]);
-      const countMap = new Map<string, number>();
-      for (const sc of stakeCounts) {
-        countMap.set(sc._id, sc.nft_count);
+      const summaryMap = new Map(summaries.map((summary) => [summary.address, summary.nft_count]));
+      const activeCountMap = new Map<string, number>();
+      for (const count of activeStakeCounts) {
+        activeCountMap.set(count._id, count.nft_count);
       }
       for (const row of rows as any[]) {
-        row.nft_count = countMap.get(row.address) || 0;
+        row.nft_count = summaryMap.get(row.address) ?? activeCountMap.get(row.address) ?? 0;
       }
     }
 
@@ -218,6 +225,59 @@ router.post('/sync', async (req: Request, res: Response) => {
     console.error('Root sync trigger error:', err);
     safeJson(res, 500, { detail: 'Failed to trigger sync' });
   }
+});
+
+type FullScanJob = {
+  id: string;
+  status: 'running' | 'completed' | 'failed';
+  started_at: string;
+  finished_at?: string;
+  report?: SyncReport;
+  error?: string;
+};
+
+let fullScanJob: FullScanJob | null = null;
+
+// ─── POST /api/root/full-scan ──────────────────────────────────
+// Start an observable, complete chain scan. The client polls the status route
+// so a long scan is not lost to an HTTP/proxy timeout.
+router.post('/full-scan', async (req: Request, res: Response) => {
+  if (!requireRoot(req, res)) return;
+
+  if (fullScanJob?.status === 'running') {
+    safeJson(res, 202, { ok: true, job: fullScanJob });
+    return;
+  }
+
+  const job: FullScanJob = {
+    id: crypto.randomUUID(),
+    status: 'running',
+    started_at: new Date().toISOString(),
+  };
+  fullScanJob = job;
+
+  triggerSync()
+    .then((report) => {
+      // A few RPC failures should not hide successful wallet updates. Report a
+      // hard failure only when nothing could be updated at all.
+      job.status = report.errors > 0 && report.updated === 0 ? 'failed' : 'completed';
+      job.report = report;
+      job.finished_at = new Date().toISOString();
+      if (report.errors > 0) job.error = `${report.errors} address scan(s) failed`;
+    })
+    .catch((err) => {
+      job.status = 'failed';
+      job.error = err instanceof Error ? err.message : 'Full scan failed';
+      job.finished_at = new Date().toISOString();
+    });
+
+  safeJson(res, 202, { ok: true, job });
+});
+
+// ─── GET /api/root/full-scan ───────────────────────────────────
+router.get('/full-scan', async (req: Request, res: Response) => {
+  if (!requireRoot(req, res)) return;
+  safeJson(res, 200, { ok: true, job: fullScanJob });
 });
 
 export default router;

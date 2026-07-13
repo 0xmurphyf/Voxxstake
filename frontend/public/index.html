@@ -1006,6 +1006,7 @@
                             <input id="filez-limit" class="term-input" type="number" min="1" max="100" value="50" style="width:64px;" />
                             <button class="modal-btn" id="filez-query" style="padding:6px 18px;">QUERY</button>
                             <button class="modal-btn" id="filez-sync" style="padding:6px 18px; background: rgba(0,255,204,0.1); border-color: rgba(0,255,204,0.4); color: #0ff;">SYNC</button>
+                            <button class="modal-btn" id="filez-full-scan" style="padding:6px 18px; background:rgba(125,255,155,0.1); border-color:rgba(125,255,155,0.5); color:#7dff9b;">FULL CHAIN SCAN</button>
                             <button class="modal-btn no-btn" id="filez-lock" style="padding:6px 18px;">LOCK</button>
                         </div>
                         <div id="filez-results" class="filez-results"></div>
@@ -1811,6 +1812,63 @@
             }
         }
 
+        const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+        async function triggerFileZFullScan() {
+            if (!rootToken) { lockFileZ(); return; }
+            const btn = document.getElementById('filez-full-scan');
+            const resultsEl = document.getElementById('filez-results');
+            btn.textContent = 'SCANNING CHAIN…';
+            btn.disabled = true;
+            try {
+                let r = await fetch('/api/root/full-scan', {
+                    method: 'POST',
+                    headers: { Authorization: 'Bearer ' + rootToken },
+                });
+                if (r.status === 401 || r.status === 403) { lockFileZ(); return; }
+                let data = await r.json().catch(() => ({}));
+                if (!r.ok) throw new Error(data.detail || 'SCAN START FAILED');
+
+                let job = data.job;
+                while (job && job.status === 'running') {
+                    const elapsed = Math.max(0, Math.floor((Date.now() - Date.parse(job.started_at)) / 1000));
+                    btn.textContent = 'SCANNING… ' + elapsed + 's';
+                    resultsEl.innerHTML = '<span style="color:#7dff9b;">LIVE SUI SCAN IN PROGRESS — ' + elapsed + 's</span>';
+                    await wait(2000);
+                    r = await fetch('/api/root/full-scan', {
+                        headers: { Authorization: 'Bearer ' + rootToken },
+                    });
+                    if (r.status === 401 || r.status === 403) { lockFileZ(); return; }
+                    data = await r.json().catch(() => ({}));
+                    if (!r.ok) throw new Error(data.detail || 'SCAN STATUS FAILED');
+                    job = data.job;
+                }
+
+                if (!job || job.status !== 'completed') {
+                    throw new Error(job?.error || 'SCAN FAILED');
+                }
+
+                const report = job.report || {};
+                const hasErrors = (report.errors || 0) > 0;
+                btn.textContent = (hasErrors ? '⚠ ' : '✓ ') + (report.updated || 0) + '/' + (report.addresses || 0) + ' SCANNED';
+                btn.style.borderColor = hasErrors ? '#ffc857' : '#0f0';
+                btn.style.color = hasErrors ? '#ffc857' : '#0f0';
+                await queryFileZ();
+            } catch (e) {
+                btn.textContent = '✗ SCAN FAILED';
+                btn.style.borderColor = '#f55';
+                btn.style.color = '#f55';
+                resultsEl.innerHTML = '<span style="color:#f55;">' + escapeHtml(e.message || 'FULL CHAIN SCAN FAILED') + '</span>';
+            } finally {
+                setTimeout(() => {
+                    btn.textContent = 'FULL CHAIN SCAN';
+                    btn.style.borderColor = 'rgba(125,255,155,0.5)';
+                    btn.style.color = '#7dff9b';
+                    btn.disabled = false;
+                }, 2500);
+            }
+        }
+
         document.addEventListener('DOMContentLoaded', async () => {
             decorateArchiveEntries();
             decorateIdCards();
@@ -1819,9 +1877,11 @@
             initLogoEasterEgg();
             const fzQuery = document.getElementById('filez-query');
             const fzSync = document.getElementById('filez-sync');
+            const fzFullScan = document.getElementById('filez-full-scan');
             const fzLock = document.getElementById('filez-lock');
             if (fzQuery) fzQuery.addEventListener('click', queryFileZ);
             if (fzSync) fzSync.addEventListener('click', triggerFileZSync);
+            if (fzFullScan) fzFullScan.addEventListener('click', triggerFileZFullScan);
             if (fzLock) fzLock.addEventListener('click', lockFileZ);
             // Column sorting (event delegation so it survives table re-renders)
             const fzResults = document.getElementById('filez-results');
