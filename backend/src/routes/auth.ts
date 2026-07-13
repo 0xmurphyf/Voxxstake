@@ -77,7 +77,9 @@ router.post('/nonce', async (req: Request, res: Response) => {
     //
     // In the rare case where two concurrent /nonce calls both attempt to insert
     // (because neither found an existing unused nonce), the second one hits a
-    // duplicate-key error (E11000). We catch that and retry as a plain update.
+    // duplicate-key error (E11000). We catch that and read back the winner's
+    // nonce — we must NOT overwrite it with our own, otherwise the winner's
+    // client receives a nonce that no longer exists in the DB and /verify fails.
     try {
       await Nonce.findOneAndUpdate(
         { address: normalized, used: false },
@@ -85,16 +87,23 @@ router.post('/nonce', async (req: Request, res: Response) => {
         { upsert: true, new: true }
       );
     } catch (err: unknown) {
-      // MongoDB duplicate key error — another request beat us to the insert.
-      // Retry as a plain update (the document now exists).
       if (
         err &&
         typeof err === 'object' &&
         (err as Record<string, unknown>).code === 11000
       ) {
-        await Nonce.updateOne(
+        // Race lost — read the winner's nonce and return THAT to the client.
+        const existing = await Nonce.findOne({ address: normalized, used: false }).lean();
+        if (existing) {
+          res.json({ nonce: existing.nonce, address: normalized });
+          return;
+        }
+        // Existing nonce expired / was used between the E11000 and our read —
+        // retry the upsert (rare edge case, guarded by throttle).
+        await Nonce.findOneAndUpdate(
           { address: normalized, used: false },
-          { $set: { nonce, created_at: new Date() } }
+          { $set: { nonce, created_at: new Date() } },
+          { upsert: true, new: true }
         );
       } else {
         throw err;

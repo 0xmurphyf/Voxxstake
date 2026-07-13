@@ -17,6 +17,11 @@ import { withMutex } from './mutex';
 const SYNC_INTERVAL_MS =
   parseInt(process.env.SYNC_INTERVAL_MINUTES || '10', 10) * 60 * 1000;
 
+// Per-address timeout for background sync — prevents one stuck address from
+// blocking the entire loop (cascading failure). Must be longer than the mutex
+// timeout (90s) so the mutex has a chance to release first.
+const PER_ADDRESS_SYNC_TIMEOUT_MS = 120_000;
+
 let syncTimer: ReturnType<typeof setInterval> | null = null;
 let isSyncing = false;
 
@@ -41,7 +46,12 @@ async function syncAllAddresses(): Promise<void> {
 
     for (const address of addresses) {
       try {
-        await withMutex(address, async () => {
+        // Wrap in a per-address timeout so a single hung address (e.g. RPC
+        // stall that outlives the mutex timeout) doesn't block the entire loop.
+        // The mutex (90s timeout) is the first line of defense; this 120s
+        // outer timeout is the safety net.
+        await Promise.race([
+          withMutex(address, async () => {
         // Fetch owned NFTs from chain
         const { objects: ownedNfts, kioskError } = await getOwnedObjects(address, VOXX_TYPE, true);
         const ownedSet = new Set<string>();
@@ -144,7 +154,11 @@ async function syncAllAddresses(): Promise<void> {
           { $set: { nft_count: ownedSet.size, last_synced: new Date() } },
           { upsert: true }
         );
-        }); // withMutex
+          }), // withMutex
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error(`BG sync timeout for ${address.slice(0, 10)}...`)), PER_ADDRESS_SYNC_TIMEOUT_MS)
+          ),
+        ]);
 
         updated++;
       } catch (err) {

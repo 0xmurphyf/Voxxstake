@@ -242,18 +242,18 @@ async function getKioskOwnedObjects(
       return nestedFor || null;
     };
 
-    // 1a. Find standard KioskOwnerCap objects
-    const standardCaps = await getDirectlyOwnedObjects(address, '0x2::kiosk::KioskOwnerCap', false);
-
-    // 1b. Also scan for PersonalKioskCap wrappers.
-    // These have type <pkg>::personal_kiosk::PersonalKioskCap and wrap a
-    // KioskOwnerCap inside fields.cap.fields.for. We find them by doing a
-    // broad scan of ALL owned objects (unfiltered) and checking each one's
-    // content structure for a nested "for" field.
+    // 1. Find all KioskOwnerCap and PersonalKioskCap objects owned by the
+    //    address. We do a single unfiltered scan of all owned objects (with
+    //    full content) and extract Kiosk IDs from any cap-like structures.
+    //    This covers both:
+    //      - Standard KioskOwnerCap (type 0x2::kiosk::KioskOwnerCap)
+    //        → kiosk ID is in content.fields.for
+    //      - PersonalKioskCap (type <pkg>::personal_kiosk::PersonalKioskCap)
+    //        → kiosk ID is nested in content.fields.cap.fields.for
     //
-    // Performance note: for most users this adds a small overhead, but for
-    // whales with thousands of objects it can be slow. The broad scan is
-    // done once and the kiosk IDs are deduplicated.
+    //    Performance note: for most users this is a single RPC call. For whales
+    //    with thousands of objects it can be paginated, but the overhead is
+    //    acceptable compared to the alternative of missing Kiosk-owned NFTs.
     const allCaps = await getDirectlyOwnedObjects(address, undefined, false);
 
     // Extract unique Kiosk IDs from all cap wrappers

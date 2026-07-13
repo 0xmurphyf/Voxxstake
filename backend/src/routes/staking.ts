@@ -13,6 +13,7 @@ import {
 import { VOXX_TYPE, POINTS_PER_NFT_PER_HOUR } from '../types';
 import { config } from '../config';
 import { withMutex } from '../services/mutex';
+import { createThrottle } from '../services/throttle';
 
 const router = Router();
 
@@ -340,24 +341,16 @@ const SUI_OBJECT_ID_RE = /^0x[0-9a-fA-F]{64}$/;
 
 // Per-user throttle for NFT detail — prevents an authenticated attacker from
 // enumerating objectIds rapidly and burning RPC quota. 500ms cooldown.
-const nftDetailLastSeen = new Map<string, number>();
-const NFT_DETAIL_MIN_INTERVAL_MS = 500;
+// Timer-based cleanup via createThrottle (no size%N memory leak).
+const nftDetailThrottle = createThrottle({ minIntervalMs: 500 });
 
 router.get('/nft/:objectId', authMiddleware, async (req: AuthRequest, res: Response) => {
   const address = req.address!;
 
   // Per-user rate limit
-  const now = Date.now();
-  const last = nftDetailLastSeen.get(address) || 0;
-  if (now - last < NFT_DETAIL_MIN_INTERVAL_MS) {
+  if (!nftDetailThrottle.allow(address)) {
     res.status(429).json({ detail: 'Too many NFT detail requests, slow down.' });
     return;
-  }
-  nftDetailLastSeen.set(address, now);
-  // Timer-based cleanup
-  if (nftDetailLastSeen.size % 200 === 0) {
-    const cutoff = now - NFT_DETAIL_MIN_INTERVAL_MS * 4;
-    for (const [k, v] of nftDetailLastSeen) if (v < cutoff) nftDetailLastSeen.delete(k);
   }
 
   try {

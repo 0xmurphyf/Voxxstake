@@ -1,0 +1,519 @@
+THREAT LIST — Round 5 Security Audit
+======================================
+Audited: All 24 .ts files under /workspace/softstaking/backend/src/
+Date: 2026-07-13
+
+FINDINGS
+========
+
+--- FINDING #1 ---
+Severity: HIGH
+Category: Race Condition — Nonce upsert / unique partial index interaction
+File: backend/src/models/Nonce.ts, line 30-37
+File: backend/src/routes/auth.ts, line 83-87
+
+Description:
+The Nonce model has a unique partial index on `{ address: 1 }` with
+`partialFilterExpression: { used: false }`. The /nonce route uses
+`findOneAndUpdate({ address, used: false }, { $set: { nonce, created_at } }, { upsert: true })`.
+
+This is CORRECT in theory — the partial unique index prevents two concurrent
+/nonce calls from creating two unused nonces for the same address. However,
+there is a subtle interaction with MongoDB's `findOneAndUpdate` + `upsert`:
+
+When `findOneAndUpdate` with `upsert: true` fails due to a duplicate key error
+(E11000), the operation does NOT retry. The error propagates to the catch block
+which returns a generic 500 "Failed to create nonce". In a race between two
+concurrent /nonce calls:
+  - Call A: findOneAndUpdate → finds nothing → tries upsert insert → SUCCEEDS
+  - Call B: findOneAndUpdate → finds nothing → tries upsert insert → E11000 duplicate key
+
+Call B's user gets a 500 error with no nonce, and cannot authenticate.
+
+The `findOneAndUpdate` with `upsert` does NOT atomically handle the case where
+the filter matches an existing document AND the upsert insert would collide.
+MongoDB's atomicity guarantee for findOneAndUpdate is: the find and the
+modification (update or insert) are atomic as a single operation. The unique
+constraint check happens during the insert phase of upsert. If two operations
+both attempt to insert (because neither found a matching doc), one will fail.
+
+This is a HIGH-severity issue because it can cause authentication failures for
+legitimate users during normal concurrent use (e.g., two browser tabs both
+loading and triggering /nonce simultaneously).
+
+Fix: Either:
+  (a) Use `findOneAndUpdate` without `upsert`, and if no doc is found, use
+      `insertOne` wrapped in a retry-on-duplicate-key loop, OR
+  (b) Use `updateOne({ address, used: false }, { $set: ... }, { upsert: true })`
+      which is idempotent — if the insert fails due to duplicate key, the
+      operation is safe to retry as an update, OR
+  (c) Catch E11000 specifically and retry as an update (not insert).
+
+--- FINDING #2 ---
+Severity: HIGH
+Category: Input Validation — No validation of objectId parameter in staking routes
+File: backend/src/routes/staking.ts, line 332-335
+File: backend/src/services/sui.ts, line 136-137
+
+Description:
+The route `GET /api/staking/nft/:objectId` accepts `objectId` from the URL
+params and passes it directly to `rpcCall('sui_getObject', [objectId, ...])`.
+There is NO validation of the objectId format before it reaches the RPC.
+
+An attacker can:
+  - Send arbitrary strings that cause RPC errors, wasting RPC quota
+  - Potentially inject JSON-RPC parameters if the objectId contains special
+    characters (though unlikely with the current JSON.stringify path)
+
+The same issue applies to `GET /api/image/:objectId` in image.ts (line 57),
+where the objectId is hashed with MD5 and used in filesystem paths — though
+that's lower risk since it's hashed.
+
+At minimum, the objectId should be validated as a valid Sui object ID (hex
+string of appropriate length, typically 66 chars with 0x prefix for addresses,
+or 64-char hex without prefix for object IDs).
+
+--- FINDING #3 ---
+Severity: HIGH
+Category: Business Logic — Point calculation uses stale holding multiplier for ranking
+File: backend/src/routes/ranking.ts, line 117-127
+
+Description:
+In the ranking endpoint, for each user, the holding multiplier is computed as:
+  `const nftCount = activeStakes.length;`
+  `const multiplier = getHoldingMultiplier(nftCount);`
+
+Then this SINGLE multiplier is used for ALL stakes of that user (active AND paused):
+  `const { points, durationDays } = computePoints(stake, multiplier, now);`
+
+However, for paused stakes, `computePoints` correctly returns only `locked_points`
+(since `status !== 'active'`). The multiplier passed in is irrelevant for paused
+stakes in the current implementation. BUT: the `nftCount` here is based on
+`activeStakes.length` from the DB, NOT from the on-chain owned count. If the DB
+is stale (user hasn't synced recently), the multiplier will be wrong.
+
+More critically: the multiplier used for ranking may differ from the actual
+session_multiplier that was frozen when points were earned. For active stakes,
+`computePoints` uses `stake.session_multiplier` (the frozen value), not the
+passed `holdingMultiplier`. So the ranking's `multiplier` field in the response
+is misleading — it shows the CURRENT multiplier, not what was actually used to
+compute points.
+
+This is a display inconsistency. The actual point totals are correct (they use
+session_multiplier), but the displayed multiplier field is wrong.
+
+--- FINDING #4 ---
+Severity: HIGH
+Category: Resource Exhaustion — Unbounded in-memory Map growth (no TTL cleanup)
+File: backend/src/routes/staking.ts, line 19
+File: backend/src/routes/visitor.ts, line 7
+File: backend/src/routes/auth.ts, line 17
+File: backend/src/routes/image.ts, line 31
+File: backend/src/routes/ranking.ts, line 14
+File: backend/src/routes/image.ts, line 23
+
+Description:
+Multiple in-memory Maps accumulate entries with only periodic cleanup triggered
+by size thresholds:
+
+1. `syncRateLimitMap` (staking.ts:19) — cleaned every 100 entries. If an attacker
+   rotates through many unique IPs, each IP gets one entry and the map grows
+   unboundedly between cleanup cycles. With 100k unique IPs, the map holds 100k
+   entries before any cleanup triggers.
+
+2. `visitorRateLimit` (visitor.ts:7) — cleaned only when size > 10000. Same issue.
+
+3. `authLastSeen` (auth.ts:17) — cleaned every 100 entries. Same issue.
+
+4. `imageLastSeen` (image.ts:31) — cleaned every 500 entries. Same issue.
+
+5. `rankingLastSeen` (ranking.ts:14) — cleaned every 200 entries. Same issue.
+
+6. `filenameCache` (image.ts:23) — NEVER cleaned. Grows unboundedly with every
+   unique objectId ever requested. This is a permanent memory leak. If the image
+   proxy serves 100k unique NFTs over the process lifetime, this Map holds 100k
+   entries forever.
+
+The periodic-cleanup-on-size-threshold pattern is fundamentally flawed: if an
+attacker sends requests from many unique IPs at a rate just below the throttle
+threshold, entries accumulate faster than they're cleaned. A single attacker
+with access to an IPv6 /64 can generate 18 quintillion unique IPs.
+
+Fix: Use a proper TTL-based cache (e.g., `node-cache` or a `setInterval`-based
+cleanup that runs on a timer, not a size threshold). For `filenameCache`, add
+an LRU eviction policy with a max size.
+
+--- FINDING #5 ---
+Severity: MEDIUM
+Category: Race Condition — Background sync and user sync can interleave on the same address
+File: backend/src/services/backgroundSync.ts, line 41-153
+File: backend/src/routes/staking.ts, line 43-151
+
+Description:
+Both `backgroundSync.syncAllAddresses()` and the user-triggered
+`syncStakesForAddress()` can operate on the same address concurrently.
+
+Scenario:
+1. Background sync starts processing address A
+2. User triggers POST /api/staking/sync for address A
+3. Both read `existingStakes` from DB
+4. Both modify stakes and call `.save()`
+5. The second `.save()` overwrites changes from the first
+
+This can cause:
+- Lost point accrual: background sync pauses an NFT and locks points, then
+  user sync overwrites with stale data
+- Duplicate session starts: both set `current_session_start` to `nowIso`
+- Lost multiplier updates: one sync updates `session_multiplier`, the other
+  overwrites it
+
+The background sync has `isSyncing` guard but it's a single boolean — it
+prevents TWO background syncs from running, but does NOT prevent a user sync
+from running concurrently with a background sync.
+
+Fix: Per-address locking (e.g., a `Map<string, Promise>` of in-flight syncs)
+or use MongoDB's `findOneAndUpdate` with optimistic concurrency control (a
+version field).
+
+--- FINDING #6 ---
+Severity: MEDIUM
+Category: Error Handling — Information disclosure via error messages
+File: backend/src/routes/image.ts, line 129-136
+
+Description:
+When an image download fails, the error response includes the HTTP status code:
+  `res.status(502).json({ detail: 'Failed to fetch image: ${imageRes.status}' });`
+
+While HTTP status codes alone are not highly sensitive, combined with timing
+and the SSRF guard's behavior, an attacker could use this to probe internal
+services:
+1. Attacker sets NFT image_url to `http://internal-service:8080/`
+2. SSRF guard blocks it (private IP)
+3. Attacker gets a different error than for a valid external URL
+
+This is a minor information leak — the attacker can distinguish between
+"blocked by SSRF guard", "connection refused", "HTTP 404", "HTTP 200", etc.
+This enables internal port scanning albeit with limited resolution.
+
+The `assertSafeImageUrl` in ssrfGuard.ts correctly blocks private IPs, so the
+practical risk is low, but the error differentiation is still a minor leak.
+
+--- FINDING #7 ---
+Severity: MEDIUM
+Category: Input Validation — No validation of query.address in /debug/nfts
+File: backend/src/routes/staking.ts, line 369-386
+
+Description:
+The debug endpoint `/api/staking/debug/nfts` accepts `?address=` query param
+and passes it directly to `getOwnedObjects(address, VOXX_TYPE, true)`. While
+this endpoint requires admin authentication, the address parameter itself is
+not validated. If an admin accidentally passes a malformed address, the RPC
+call will fail with a potentially confusing error.
+
+Low practical risk since it's admin-only, but still a validation gap.
+
+--- FINDING #8 ---
+Severity: MEDIUM
+Category: Business Logic — Holding multiplier can be 1.0 for 1 NFT, but formula says +0.001 per EXTRA NFT
+File: backend/src/services/staking.ts, line 10-13
+
+Description:
+`getHoldingMultiplier(1)` returns `1.0` because `nftCount <= 1`.
+`getHoldingMultiplier(2)` returns `1.001` (1.0 + (2-1)*0.001).
+
+This is by design (1 NFT = base 1.0x), but the code comment says:
+  "Examples: 1 NFT → 1.0x, 2 NFTs → 1.001x"
+
+This is correct. No bug here — just confirming the logic matches documentation.
+
+--- FINDING #9 ---
+Severity: MEDIUM
+Category: Input Validation — image.ts disk probe: existsSync in a loop, path traversal risk
+File: backend/src/routes/image.ts, line 73-82
+
+Description:
+The disk cache probe iterates through extensions and checks `fs.existsSync()`:
+
+  const hash = crypto.createHash('md5').update(objectId).digest('hex');
+  const exts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif'];
+  for (const ext of exts) {
+    const candidate = `${hash}.${ext}`;
+    if (fs.existsSync(path.join(CACHE_DIR, candidate))) { ... }
+  }
+
+Issues:
+1. `objectId` is hashed with MD5 before use in filenames, so path traversal
+   via `../` in objectId is not possible. The hash output is always hex. SAFE.
+
+2. `existsSync` is synchronous and blocks the event loop. With 6 extensions
+   to check per request, this is negligible. However, if the CACHE_DIR is on
+   a slow network filesystem (NFS, EFS), these 6 sync stat calls could block
+   for hundreds of milliseconds each. In practice, the cache is local disk.
+
+3. The `filenameCache` in-memory Map (line 23) should make the disk probe
+   rare — once an image is cached in memory, the existsSync loop is skipped.
+   This is correctly implemented.
+
+4. EDGE CASE: If two different objectIds produce the same MD5 hash (collision),
+   they would share a cache file. MD5 collisions are computationally feasible
+   but extremely unlikely in this context. An attacker would need to create a
+   Sui NFT with a specific objectId that MD5-collides with another. Not
+   practically exploitable.
+
+5. The probe checks all extensions in order and returns the first match. If
+   both `hash.png` and `hash.jpg` exist (unlikely but possible if the same
+   objectId was cached with different content types across restarts), only
+   the first match (png) is served. This could serve a stale/wrong image.
+   VERY LOW risk since the same objectId should always have the same image.
+
+Overall: The disk probe logic is correct and safe. The use of `existsSync` is
+acceptable given the small fixed loop size and the in-memory cache bypass.
+
+--- FINDING #10 ---
+Severity: MEDIUM
+Category: Resource Exhaustion — download-images.ts: readdirSync on every downloadImage call
+File: backend/src/scripts/download-images.ts, line 43
+
+Description:
+In `downloadImage()`, the cache check uses:
+  `const existing = fs.readdirSync(CACHE_DIR).filter(f => f.startsWith(hash));`
+
+This is O(n) where n is the number of files in the cache directory. With 10,000+
+cached images, this blocks the event loop on every call. The script processes
+NFTs sequentially, so each one calls this.
+
+For a one-shot script this is acceptable (runs once). But in `--watch` mode,
+the script runs every 30 minutes. If the cache grows to 100k files, each
+`readdirSync` becomes expensive.
+
+Fix: Use the same hash+extension probe pattern as image.ts (check specific
+filenames with existsSync instead of scanning the whole directory).
+
+--- FINDING #11 ---
+Severity: LOW
+Category: Error Handling — console.error may leak sensitive data
+File: backend/src/routes/auth.ts, line 91
+File: backend/src/routes/auth.ts, line 178
+File: backend/src/routes/staking.ts, line 249, 284, 326, 363, 383
+File: backend/src/routes/image.ts, line 157
+File: backend/src/services/backgroundSync.ts, line 149, 159
+File: backend/src/services/sui.ts, line 332, 355, 441
+
+Description:
+Multiple `console.error` calls log error objects that could contain sensitive
+information:
+- RPC URLs with API keys (if embedded in URL)
+- MongoDB connection strings (if error comes from mongoose)
+- Full stack traces that reveal internal paths and code structure
+
+In production, these go to stdout/stderr which may be captured by logging
+aggregators (Railway logs, CloudWatch, etc.). If those logs are ever
+compromised, internal infrastructure details are exposed.
+
+The RPC URL in config.ts (line 37) defaults to a public endpoint, but if an
+operator sets a private RPC URL with an API key in the query string
+(e.g., `https://rpc.example.com/?apikey=secret`), that key appears in error
+logs whenever an RPC call fails.
+
+Fix: Sanitize URLs in error messages (strip query strings), or use a dedicated
+logger with PII redaction.
+
+--- FINDING #12 ---
+Severity: LOW
+Category: Auth/AuthZ — No rate limiting on /api/staking/nft/:objectId
+File: backend/src/routes/staking.ts, line 332
+
+Description:
+The NFT detail endpoint `GET /api/staking/nft/:objectId` is behind authMiddleware
+but has NO per-user or per-IP rate limiting. An authenticated attacker could
+enumerate objectIds rapidly, burning RPC quota via `getNftMetadata(objectId)`.
+
+Other endpoints (/sync, /positions) have rate limiting via `syncRateLimitMap`,
+and public endpoints have per-IP throttles. This endpoint has neither.
+
+Fix: Add per-user rate limiting or a cooldown between NFT detail requests.
+
+--- FINDING #13 ---
+Severity: LOW
+Category: Auth/AuthZ — /api/staking/debug/nfts uses inline admin check instead of requireAdmin
+File: backend/src/routes/staking.ts, line 370
+File: backend/src/routes/admin.ts, line 24-34
+
+Description:
+The debug endpoint in staking.ts has its own admin check:
+  `if (!req.address || !config.adminAddresses.includes(req.address.toLowerCase()))`
+
+But admin.ts has a reusable `requireAdmin()` helper. Using the inline check
+means:
+1. No 401 vs 403 distinction (missing auth vs not admin)
+2. If the admin check logic changes (e.g., adding role-based checks), this
+   endpoint would be missed
+3. Code duplication
+
+Low risk since both checks are functionally equivalent, but it's a maintenance
+hazard.
+
+--- FINDING #14 ---
+Severity: LOW
+Category: Resource Exhaustion — download-images.ts watch mode: seenAcrossCycles cleared at 100k
+File: backend/src/scripts/download-images.ts, line 226-229
+
+Description:
+In watch mode, `seenAcrossCycles` tracks already-downloaded NFT IDs. When it
+exceeds 100,000 entries, it's completely cleared:
+  `seenAcrossCycles.clear();`
+
+This means after 100k unique NFTs, ALL previously downloaded NFTs will be
+re-fetched from chain (RPC calls) and re-checked against disk. This is a
+thundering-herd reset — the next watch cycle after clearing will re-scan
+everything.
+
+For a collection with <100k NFTs this is fine. For larger collections, the
+periodic full re-scan could cause RPC quota exhaustion.
+
+The disk cache (`existsSync` per hash+ext in downloadImage) prevents actual
+re-downloads, but the RPC calls to `getNftMetadata()` still happen.
+
+Fix: Use an LRU eviction policy instead of clearing everything, or simply
+trust the disk cache and don't track seenAcrossCycles at all (just check disk).
+
+--- FINDING #15 ---
+Severity: LOW
+Category: Business Logic — computePoints rounds sessionPoints with Math.round
+File: backend/src/services/staking.ts, line 59
+
+Description:
+`currentSessionPoints = Math.round(sessionHours * POINTS_PER_NFT_PER_HOUR * sessionMult);`
+
+This rounds to the nearest integer. For very short sessions (seconds), the
+result can round to 0, effectively granting 0 points for a brief active period.
+This is by design (points are integers), but it means that rapid
+activate/pause/activate cycles could result in lost fractional points.
+
+Since POINTS_PER_NFT_PER_HOUR = 1.0, and the minimum meaningful session is
+probably minutes (not seconds), the rounding loss is negligible. But if the
+points rate were ever changed to a smaller value, the rounding could become
+significant.
+
+--- FINDING #16 ---
+Severity: LOW
+Category: Race Condition — TTL index + unique partial index compatibility
+File: backend/src/models/Nonce.ts, line 21, 30-37
+
+Description:
+The Nonce collection has three indexes:
+1. `{ created_at: 1 }` with `expireAfterSeconds: NONCE_EXPIRY_SECONDS + 60` (TTL)
+2. `{ address: 1, used: 1 }` (standard)
+3. `{ address: 1 }` unique partial `{ used: false }`
+
+MongoDB allows TTL indexes and unique indexes to coexist on the same collection
+without conflict. The TTL index operates on `created_at` while the unique index
+operates on `address`. They don't interfere.
+
+However, there's a theoretical edge case:
+- Nonce A is created at time T, expires at T + 360 (300 + 60)
+- Nonce A is used (set used=true) at time T + 100
+- The TTL index will delete Nonce A at T + 360 (based on created_at, not
+  updated_at)
+- Nonce B can be created for the same address at T + 100 (because Nonce A is
+  now used=true, so it doesn't violate the unique partial index)
+
+This is CORRECT behavior. The TTL cleanup is based on `created_at`, which is
+intentional — it guarantees cleanup even if the nonce is never used.
+
+No conflict between these indexes. CONFIRMED SAFE.
+
+--- FINDING #17 ---
+Severity: LOW
+Category: Input Validation — address parameter in balance route accepts any hex string
+File: backend/src/routes/balance.ts, line 19
+
+Description:
+The balance route validates: `address.startsWith('0x') && address.length !== 66`
+This accepts any 66-character string starting with 0x, not necessarily a valid
+Sui address. Invalid addresses will cause RPC errors, wasting quota.
+
+This is a minor issue since the user is authenticated and the RPC will simply
+return an error for invalid addresses.
+
+--- FINDING #18 ---
+Severity: LOW
+Category: Configuration — No upper bound on JWT_EXPIRY_HOURS env override
+File: backend/src/types/index.ts, line 89
+
+Description:
+The comment says "Override via the JWT_EXPIRY_HOURS env var", but the code
+doesn't actually read `JWT_EXPIRY_HOURS` from the environment. The constant
+`JWT_EXPIRY_HOURS = 4` is hardcoded. If an operator sets the env var expecting
+it to work, it will be silently ignored.
+
+Either the code should read the env var, or the comment should be removed.
+
+Actually, re-reading config.ts: there is NO `JWT_EXPIRY_HOURS` env var read.
+The comment in types/index.ts is misleading/wrong.
+
+--- FINDING #19 ---
+Severity: LOW
+Category: Configuration — No validation of SYNC_RATE_LIMIT_SEC
+File: backend/src/config.ts, line 50
+
+Description:
+`syncRateLimitSeconds: parseInt(process.env.SYNC_RATE_LIMIT_SEC || '60', 10)`
+
+If an operator accidentally sets `SYNC_RATE_LIMIT_SEC=0`, the rate limit
+becomes 0 seconds — every request is rate-limited. Users would never be able
+to sync. Conversely, `SYNC_RATE_LIMIT_SEC=999999` would effectively disable
+rate limiting.
+
+Fix: Clamp to a reasonable range (e.g., 10-300 seconds).
+
+--- FINDING #20 ---
+Severity: LOW
+Category: Business Logic — Background sync doesn't update Profile last_seen_at
+File: backend/src/services/backgroundSync.ts
+
+Description:
+The background sync processes all addresses but does NOT update `Profile.last_seen_at`
+or `Profile.last_ip`. This means:
+1. `last_seen_at` only reflects explicit user logins, not background activity
+2. If a user never logs in again but their NFTs are synced by background sync,
+   their profile appears stale
+
+This is by design (background sync is not user activity), but it means the
+`last_seen_at` field is not a reliable indicator of "last time this user's data
+was updated."
+
+--- FINDING #21 ---
+Severity: LOW
+Category: SSRF — ssrfGuard.ts: IPv6 private range check is incomplete
+File: backend/src/services/ssrfGuard.ts, line 22-40
+
+Description:
+The `isPrivateIp` function checks IPv6 private ranges:
+  `v.startsWith('fe80:') || v.startsWith('fc') || v.startsWith('fd')`
+
+This covers link-local (fe80::/10) and unique local (fc00::/7). However, it
+does NOT check:
+- `::ffff:0:0` to `::ffff:0:ffff` (IPv4-mapped IPv6, partially handled via
+  the `::ffff:` prefix check)
+- `64:ff9b::/96` (NAT64 well-known prefix)
+- `100::/64` (discard prefix)
+- `2001:db8::/32` (documentation prefix)
+
+These are low-risk omissions. The most important check (::ffff: for IPv4-mapped)
+is handled. NAT64 could theoretically be used to route to internal IPv4
+addresses, but this requires a NAT64 gateway on the network path — unlikely in
+a typical cloud deployment.
+
+--- SUMMARY ---
+Total findings: 21
+  HIGH: 4 (#1, #2, #3, #4)
+  MEDIUM: 6 (#5, #6, #7, #8-confirmed-safe, #9, #10)
+  LOW: 11 (#11-#21)
+
+Key areas of concern:
+1. Nonce upsert race condition (#1) — can break auth for concurrent requests
+2. Unbounded memory Maps (#4) — memory leak in filenameCache, potential DoS
+3. Concurrent sync race (#5) — background + user sync interleaving
+4. Missing objectId validation (#2) — RPC quota abuse vector
+5. Ranking multiplier display (#3) — misleading data shown to users
