@@ -114,8 +114,14 @@ async function runSyncAddresses(requestedAddresses?: string[]): Promise<SyncRepo
         const now = new Date();
         const nowIso = now.toISOString();
 
-        // Get existing stakes
-        const existingStakes = await Stake.find({ address });
+        // Get existing stakes for ALL NFTs this address currently owns,
+        // including any that may have been transferred from another address.
+        // Using { object_id: { $in: [...] } } instead of { address } ensures
+        // we find stakes that were created under a previous owner.
+        const ownedIds = [...ownedSet];
+        const existingStakes = ownedIds.length > 0
+          ? await Stake.find({ object_id: { $in: ownedIds } })
+          : [];
         const existingMap = new Map(existingStakes.map((s) => [s.object_id, s]));
 
         const currentNftCount = ownedSet.size;
@@ -142,26 +148,36 @@ async function runSyncAddresses(requestedAddresses?: string[]): Promise<SyncRepo
             existing.last_synced = nowIso;
             await existing.save();
           } else {
-            await Stake.create({
-              address,
-              object_id: objId,
-              name: meta.name,
-              image_url: meta.image_url,
-              created_at: nowIso,
-              total_staked_seconds: 0.0,
-              current_session_start: nowIso,
-              status: 'active',
-              session_multiplier: currentMultiplier,
-              last_synced: nowIso,
-            });
+            // NFT may have transferred from another address — use upsert to
+            // atomically claim it (or update if this address already owns it).
+            // This avoids E11000 duplicate key errors on object_id when the
+            // same NFT moves between wallets.
+            await Stake.findOneAndUpdate(
+              { object_id: objId },
+              {
+                $set: {
+                  address,
+                  name: meta.name,
+                  image_url: meta.image_url,
+                  total_staked_seconds: 0.0,
+                  current_session_start: nowIso,
+                  status: 'active',
+                  session_multiplier: currentMultiplier,
+                  last_synced: nowIso,
+                },
+                $setOnInsert: { created_at: nowIso, locked_points: 0.0 },
+              },
+              { upsert: true, new: true }
+            );
           }
         }
 
         // This point is reached only after a complete direct + Kiosk scan, so
         // missing objects can safely be paused.
-        // currentNftCount / currentMultiplier already computed above.
-        for (const [objId, stake] of existingMap) {
-          if (!ownedSet.has(objId) && stake.status === 'active') {
+        // Query stakes that belong to THIS address but are no longer owned.
+        const addressStakes = await Stake.find({ address });
+        for (const stake of addressStakes) {
+          if (!ownedSet.has(stake.object_id) && stake.status === 'active') {
             let sessionSeconds = 0.0;
             if (stake.current_session_start) {
               const sessionStart = new Date(stake.current_session_start);
