@@ -5,6 +5,7 @@ import { config } from '../config';
 import { Profile } from '../models/Profile';
 import { Stake } from '../models/Stake';
 import { Nonce } from '../models/Nonce';
+import { triggerSync } from '../services/backgroundSync';
 
 const router = Router();
 
@@ -180,10 +181,42 @@ router.get('/query', async (req: Request, res: Response) => {
       .skip(skip)
       .limit(limit)
       .lean();
+
+    // For profiles view, enrich with NFT count from stakes collection
+    if (view === 'profiles' && rows.length > 0) {
+      const addresses = rows.map((r: any) => r.address);
+      const stakeCounts = await Stake.aggregate([
+        { $match: { address: { $in: addresses } } },
+        { $group: { _id: '$address', nft_count: { $sum: 1 } } },
+      ]);
+      const countMap = new Map<string, number>();
+      for (const sc of stakeCounts) {
+        countMap.set(sc._id, sc.nft_count);
+      }
+      for (const row of rows as any[]) {
+        row.nft_count = countMap.get(row.address) || 0;
+      }
+    }
+
     safeJson(res, 200, { view, count: rows.length, limit, skip, rows });
   } catch (err) {
     console.error('Root query error:', err);
     safeJson(res, 500, { detail: 'Query failed' });
+  }
+});
+
+// ─── POST /api/root/sync ───────────────────────────────────────
+// Trigger an immediate full background sync. Requires root JWT.
+router.post('/sync', async (req: Request, res: Response) => {
+  if (!requireRoot(req, res)) return;
+
+  try {
+    // Fire-and-forget — sync runs in background, we return immediately
+    triggerSync().catch((err) => console.error('[root] Sync error:', err));
+    safeJson(res, 200, { ok: true, detail: 'Sync triggered. Check server logs for progress.' });
+  } catch (err) {
+    console.error('Root sync trigger error:', err);
+    safeJson(res, 500, { detail: 'Failed to trigger sync' });
   }
 });
 
