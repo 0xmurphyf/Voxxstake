@@ -43,7 +43,17 @@ router.put('/', authMiddleware, async (req: AuthRequest, res: Response) => {
         return;
       }
     }
-    if (pfp_object_id !== undefined) update.pfp_object_id = pfp_object_id || null;
+    if (pfp_object_id !== undefined) {
+      // Only allow strings or null — reject objects/arrays to prevent
+      // data corruption (e.g. an attacker sending {$ne: "anything"} which
+      // Mongoose $set would write verbatim into the document).
+      if (pfp_object_id === null || typeof pfp_object_id === 'string') {
+        update.pfp_object_id = pfp_object_id;
+      } else {
+        res.status(400).json({ detail: 'pfp_object_id must be a string or null' });
+        return;
+      }
+    }
 
     const profile = await Profile.findOneAndUpdate(
       { address: req.address! },

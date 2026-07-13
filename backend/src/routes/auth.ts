@@ -56,7 +56,10 @@ function normalizeAddress(addr: string): string {
 /**
  * POST /api/auth/nonce
  * Generate a nonce for wallet authentication.
- * Old nonces for the same address are cleaned up before creating a new one.
+ * Uses findOneAndUpdate with upsert to atomically replace any existing unused
+ * nonce — the unique partial index on { address, used: false } guarantees at
+ * most one unused nonce per address at the database level, closing the race
+ * window that existed with the old deleteMany-then-create pattern.
  */
 router.post('/nonce', async (req: Request, res: Response) => {
   try {
@@ -70,25 +73,18 @@ router.post('/nonce', async (req: Request, res: Response) => {
 
     const normalized = normalizeAddress(address);
 
-    // Delete any existing unused nonces for this address (prevents accumulation).
-    // NOTE: there is a narrow race window between deleteMany and create below —
-    // concurrent requests for the same address could both pass the delete and
-    // both insert, leaving two valid nonces. The per-IP 3s throttle (authThrottle)
-    // makes this extremely unlikely in practice (same IP can't fire two /nonce
-    // calls within 3s). If this ever becomes a concern, add a unique compound
-    // index on { address: 1, used: 1 } with partialFilterExpression { used: false }.
-    await Nonce.deleteMany({ address: normalized, used: false });
-
     const randomPart = crypto.randomBytes(16).toString('hex');
     // Human-readable message so the user's wallet shows what they're signing
     const nonce = `Apply for Neoterra Citizenship\n\nWallet: ${normalized}\nNonce: ${randomPart}`;
 
-    await Nonce.create({
-      address: normalized,
-      nonce,
-      created_at: new Date(),
-      used: false,
-    });
+    // Atomically upsert: if an unused nonce exists for this address, replace it;
+    // otherwise insert a new one. The unique partial index on { address, used: false }
+    // (see models/Nonce.ts) guarantees this is race-free at the DB level.
+    await Nonce.findOneAndUpdate(
+      { address: normalized, used: false },
+      { $set: { nonce, created_at: new Date() } },
+      { upsert: true, new: true }
+    );
 
     res.json({ nonce });
   } catch (err) {

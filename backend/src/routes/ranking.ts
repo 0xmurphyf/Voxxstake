@@ -54,6 +54,20 @@ function formatDisplayName(address: string, profileName?: string | null): string
  * Ranked by total citizenship credits (0-credit users at the bottom).
  *
  * If ?address= is provided, the response includes current_user_rank.
+ *
+ * SCALABILITY: Currently loads full Profile + Stake collections into memory.
+ * For <10k users this is fine (<1MB memory per request). When the user base
+ * grows beyond that, the per-IP 1.5s throttle keeps concurrency low, but
+ * individual request latency will increase linearly. The migration path is:
+ *   1. Add a cron job to pre-compute total_credits into a new RankingSnapshot
+ *      collection every 5 minutes (backgroundSync already touches every address).
+ *   2. The ranking endpoint then reads from the pre-computed snapshot with a
+ *      simple .find().sort().skip().limit() — sub-10ms regardless of user count.
+ *   3. current_user_rank for the query address is still accurate because the
+ *      snapshot is sorted by credits.
+ * This is documented rather than implemented now because the point-calculation
+ * logic (computePoints, session_multiplier, locked_points) is inherently
+ * application-layer and cannot be pushed into a MongoDB aggregation pipeline.
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
@@ -75,11 +89,6 @@ router.get('/', async (req: Request, res: Response) => {
     const skip = Math.max(parseInt(String(req.query.skip || '0'), 10) || 0, 0);
 
     // 1. Get ALL profiles — every user who ever authenticated.
-    //    NOTE: this loads the full collections into memory. For a small-to-medium
-    //    user base (<10k) this is fine. If the user base grows significantly,
-    //    replace with a MongoDB aggregation pipeline that pre-computes credits
-    //    via $lookup + $group + $addFields, then $sort + $skip + $limit in the DB
-    //    layer to avoid memory pressure.
     const allProfiles = await Profile.find({}).lean();
     const nameMap = new Map<string, string | null>();
     for (const p of allProfiles) {

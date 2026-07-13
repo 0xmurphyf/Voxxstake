@@ -67,10 +67,19 @@ router.get('/:objectId', async (req: Request, res: Response) => {
       filenameCache.delete(objectId);
     }
 
-    // 2. Check disk cache by scanning for objectId-based filenames
+    // 2. Check disk cache — probe known extensions directly instead of
+    //    scanning the whole directory with readdirSync (which blocks the
+    //    event loop when the cache grows large).
     const hash = crypto.createHash('md5').update(objectId).digest('hex');
-    const diskFiles = fs.readdirSync(CACHE_DIR);
-    const match = diskFiles.find(f => f.startsWith(hash));
+    const exts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif'];
+    let match: string | null = null;
+    for (const ext of exts) {
+      const candidate = `${hash}.${ext}`;
+      if (fs.existsSync(path.join(CACHE_DIR, candidate))) {
+        match = candidate;
+        break;
+      }
+    }
     if (match) {
       const filePath = path.join(CACHE_DIR, match);
       filenameCache.set(objectId, match);

@@ -22,6 +22,19 @@ NonceSchema.index({ created_at: 1 }, { expireAfterSeconds: NONCE_EXPIRY_SECONDS 
 // Secondary index so the "delete existing unused nonces for this address" path
 // and the lookup-by-(address,nonce,used) path are both covered.
 NonceSchema.index({ address: 1, used: 1 });
+// Unique compound index on unused nonces per address — closes the race window
+// between deleteMany and create in /api/auth/nonce. With this index, a second
+// concurrent /nonce call for the same address will fail with a duplicate key
+// error instead of inserting a second unused nonce. The partialFilterExpression
+// ensures used=true rows are never constrained (they're cleaned up by TTL anyway).
+NonceSchema.index(
+  { address: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { used: false },
+    name: 'unique_unused_nonce_per_address',
+  }
+);
 
 // Strip _id and __v from JSON output
 NonceSchema.set('toJSON', {

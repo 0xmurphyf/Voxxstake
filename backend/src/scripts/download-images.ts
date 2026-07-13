@@ -205,13 +205,28 @@ async function main() {
     const intervalMin = INTERVAL_MS / 60000;
     console.log(`\n[WATCH] Running every ${intervalMin} minutes. Press Ctrl+C to stop.`);
 
-    // Also re-run Phase 2 on each cycle to catch new addresses
+    // Track already-seen IDs across cycles so we don't re-download every time.
+    // Cleared periodically to avoid unbounded growth (the filesystem cache is
+    // the source of truth — this is just an optimisation to skip redundant
+    // chain fetches within a watch session).
+    const seenAcrossCycles = new Set<string>();
+
     const runCycle = async () => {
       console.log(`\n=== Watch cycle at ${new Date().toISOString()} ===`);
       try {
         const ids = await discoverNftIdsFromChain();
-        console.log(`Found ${ids.length} NFTs on chain`);
-        await runDownloadPass(ids);
+        const newIds = ids.filter(id => !seenAcrossCycles.has(id));
+        console.log(`Found ${ids.length} NFTs on chain (${newIds.length} new this session)`);
+        if (newIds.length > 0) {
+          await runDownloadPass(newIds);
+          for (const id of newIds) seenAcrossCycles.add(id);
+        }
+        // Prune the seen-set if it grows beyond 100k entries — this is a
+        // script-level optimisation, the disk cache is the real dedup layer.
+        if (seenAcrossCycles.size > 100_000) {
+          console.log('[WATCH] Pruning seen-set (size > 100k)');
+          seenAcrossCycles.clear();
+        }
       } catch (err) {
         console.error('Watch cycle error:', err);
       }
