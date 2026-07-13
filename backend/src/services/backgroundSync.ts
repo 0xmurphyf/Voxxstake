@@ -80,16 +80,20 @@ async function syncAllAddresses(): Promise<void> {
           });
         }
 
-        // Current holding multiplier for the address (based on owned NFT count).
-        const currentNftCount = ownedSet.size;
-        const currentMultiplier = getHoldingMultiplier(currentNftCount);
-
         const now = new Date();
         const nowIso = now.toISOString();
 
         // Get existing stakes
         const existingStakes = await Stake.find({ address });
         const existingMap = new Map(existingStakes.map((s) => [s.object_id, s]));
+
+        // Preserve the last-known active count on a partial Kiosk scan. This
+        // keeps session multipliers stable until a complete scan succeeds.
+        const knownActiveCount = existingStakes.filter((s) => s.status === 'active').length;
+        const currentNftCount = kioskError
+          ? Math.max(ownedSet.size, knownActiveCount)
+          : ownedSet.size;
+        const currentMultiplier = getHoldingMultiplier(currentNftCount);
 
         // Activate owned NFTs
         for (const [objId, meta] of ownedMeta) {
@@ -157,14 +161,14 @@ async function syncAllAddresses(): Promise<void> {
           console.warn(`[BG Sync] Kiosk scan failed for ${address.slice(0, 10)}... — 0 direct NFTs, ${existingMap.size} DB stakes preserved`);
         }
 
-        // Keep StakeSummary.nft_count in sync with the ground truth from chain,
-        // so /cached and /positions (rate-limit fallback) always report the real
-        // owned count — not a stale value from the last user-triggered sync.
-        await StakeSummary.findOneAndUpdate(
-          { address },
-          { $set: { nft_count: ownedSet.size, last_synced: new Date() } },
-          { upsert: true }
-        );
+        // Never overwrite complete ground truth with a direct-only partial scan.
+        if (!kioskError) {
+          await StakeSummary.findOneAndUpdate(
+            { address },
+            { $set: { nft_count: ownedSet.size, last_synced: new Date() } },
+            { upsert: true }
+          );
+        }
           }), // withMutex
           perAddrTimeout,
         ]);

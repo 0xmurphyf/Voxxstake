@@ -44,11 +44,16 @@ function setSyncRateLimit(address: string): void {
 
 /**
  * Sync helper: for a given address, pull chain data and update DB.
- * Returns { ownedMap, sellAlerts }.
+ * Returns the scan result. kioskError means the ownedMap is only partial and
+ * must never replace the last complete on-chain count.
  */
 async function syncStakesForAddress(
   address: string
-): Promise<{ ownedMap: Map<string, { name: string; image_url: string | null }>; sellAlerts: string[] }> {
+): Promise<{
+  ownedMap: Map<string, { name: string; image_url: string | null }>;
+  sellAlerts: string[];
+  kioskError: boolean;
+}> {
   const now = new Date();
   const nowIso = now.toISOString();
 
@@ -69,8 +74,12 @@ async function syncStakesForAddress(
   const existingMap = new Map(existingStakes.map((s) => [s.object_id, s]));
   const sellAlerts: string[] = [];
 
-  // Current holding multiplier for the user (based on owned NFT count).
-  const currentNftCount = ownedMap.size;
+  // On a partial Kiosk scan, retain the last-known active count so a transient
+  // RPC failure cannot lower the multiplier assigned to a resumed/new session.
+  const knownActiveCount = existingStakes.filter((s) => s.status === 'active').length;
+  const currentNftCount = kioskError
+    ? Math.max(ownedMap.size, knownActiveCount)
+    : ownedMap.size;
   const currentMultiplier = getHoldingMultiplier(currentNftCount);
 
   // 1) For each owned NFT: ensure active stake
@@ -153,7 +162,7 @@ async function syncStakesForAddress(
     console.warn(`[Sync] Kiosk scan failed for ${address.slice(0, 10)}... — 0 direct NFTs found, ${existingMap.size} DB stakes preserved`);
   }
 
-  return { ownedMap, sellAlerts };
+  return { ownedMap, sellAlerts, kioskError };
 }
 
 // ─── GET /api/staking/cached ───────────────────────────────────
@@ -211,26 +220,36 @@ router.post('/sync', authMiddleware, async (req: AuthRequest, res: Response) => 
   }
 
   try {
-    const { ownedMap, sellAlerts } = await withMutex(address, () => syncStakesForAddress(address));
+    const { ownedMap, sellAlerts, kioskError } = await withMutex(address, () => syncStakesForAddress(address));
 
     // Only set the rate limit AFTER a successful sync. If the chain call
     // fails (RPC timeout, etc.), the user can retry immediately instead of
     // being locked out for 60s with no data.
     setSyncRateLimit(address);
 
-    const nftCount = ownedMap.size;
-    const holdingMultiplier = getHoldingMultiplier(nftCount);
-
-    // Persist the on-chain owned count so the cached endpoint reports the same
-    // number (no "active-DB" vs "owned" flip, and no rate-limit-stuck wrong value).
-    await StakeSummary.findOneAndUpdate(
-      { address },
-      { $set: { nft_count: nftCount, last_synced: new Date() } },
-      { upsert: true }
-    );
-
     const freshStakes = await Stake.find({ address }).lean();
-    const ownedSet = new Set(ownedMap.keys());
+    const activeStakeIds = freshStakes
+      .filter((s) => s.status === 'active')
+      .map((s) => s.object_id);
+    const previousSummary = kioskError
+      ? await StakeSummary.findOne({ address }).lean()
+      : null;
+    const nftCount = kioskError
+      ? Math.max(previousSummary?.nft_count || 0, activeStakeIds.length, ownedMap.size)
+      : ownedMap.size;
+    const holdingMultiplier = getHoldingMultiplier(nftCount);
+    const ownedSet = kioskError
+      ? new Set(activeStakeIds)
+      : new Set(ownedMap.keys());
+
+    // Only a complete direct + Kiosk scan may replace the cached ground truth.
+    if (!kioskError) {
+      await StakeSummary.findOneAndUpdate(
+        { address },
+        { $set: { nft_count: nftCount, last_synced: new Date() } },
+        { upsert: true }
+      );
+    }
     const positions = freshStakes.map((s) =>
       buildPositionFromStake(
         s as unknown as import('../models/Stake').IStake,
@@ -249,6 +268,7 @@ router.post('/sync', authMiddleware, async (req: AuthRequest, res: Response) => 
     res.json({
       ...stats,
       synced: true,
+      scan_partial: kioskError,
       last_synced: lastSyncedTimestamps.length > 0 ? lastSyncedTimestamps[0] : null,
     });
   } catch (err) {
@@ -294,24 +314,33 @@ router.get('/positions', authMiddleware, async (req: AuthRequest, res: Response)
   }
 
   try {
-    const { ownedMap, sellAlerts } = await withMutex(address, () => syncStakesForAddress(address));
+    const { ownedMap, sellAlerts, kioskError } = await withMutex(address, () => syncStakesForAddress(address));
 
     // Only set the rate limit AFTER a successful sync.
     setSyncRateLimit(address);
 
-    const nftCount = ownedMap.size;
-    const holdingMultiplier = getHoldingMultiplier(nftCount);
-
-    // Persist the on-chain owned count so the cached endpoint reports the same
-    // number (no "active-DB" vs "owned" flip, and no rate-limit-stuck wrong value).
-    await StakeSummary.findOneAndUpdate(
-      { address },
-      { $set: { nft_count: nftCount, last_synced: new Date() } },
-      { upsert: true }
-    );
-
     const freshStakes = await Stake.find({ address }).lean();
-    const ownedSet = new Set(ownedMap.keys());
+    const activeStakeIds = freshStakes
+      .filter((s) => s.status === 'active')
+      .map((s) => s.object_id);
+    const previousSummary = kioskError
+      ? await StakeSummary.findOne({ address }).lean()
+      : null;
+    const nftCount = kioskError
+      ? Math.max(previousSummary?.nft_count || 0, activeStakeIds.length, ownedMap.size)
+      : ownedMap.size;
+    const holdingMultiplier = getHoldingMultiplier(nftCount);
+    const ownedSet = kioskError
+      ? new Set(activeStakeIds)
+      : new Set(ownedMap.keys());
+
+    if (!kioskError) {
+      await StakeSummary.findOneAndUpdate(
+        { address },
+        { $set: { nft_count: nftCount, last_synced: new Date() } },
+        { upsert: true }
+      );
+    }
     const positions = freshStakes.map((s) =>
       buildPositionFromStake(s as unknown as import('../models/Stake').IStake, holdingMultiplier, ownedSet)
     );
@@ -326,6 +355,7 @@ router.get('/positions', authMiddleware, async (req: AuthRequest, res: Response)
     res.json({
       ...stats,
       synced: true,
+      scan_partial: kioskError,
       last_synced: lastSyncedTimestamps.length > 0 ? lastSyncedTimestamps[0] : null,
     });
   } catch (err) {
@@ -405,8 +435,13 @@ router.get('/debug/nfts', authMiddleware, async (req: AuthRequest, res: Response
     return;
   }
   try {
-    const { objects: nfts } = await getOwnedObjects(address, VOXX_TYPE, true);
-    res.json({ address, count: nfts.length, nfts: nfts.slice(0, 5) });
+    const { objects: nfts, kioskError } = await getOwnedObjects(address, VOXX_TYPE, true);
+    res.json({
+      address,
+      count: nfts.length,
+      scan_complete: !kioskError,
+      nfts: nfts.slice(0, 5),
+    });
   } catch (err) {
     console.error('[DEBUG] NFT scan error:', err);
     res.status(500).json({ detail: 'NFT scan failed' });
