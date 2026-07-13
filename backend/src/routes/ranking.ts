@@ -74,7 +74,12 @@ router.get('/', async (req: Request, res: Response) => {
     const limit = Math.min(Math.max(parseInt(String(req.query.limit || '100'), 10) || 100, 1), 500);
     const skip = Math.max(parseInt(String(req.query.skip || '0'), 10) || 0, 0);
 
-    // 1. Get ALL profiles — every user who ever authenticated
+    // 1. Get ALL profiles — every user who ever authenticated.
+    //    NOTE: this loads the full collections into memory. For a small-to-medium
+    //    user base (<10k) this is fine. If the user base grows significantly,
+    //    replace with a MongoDB aggregation pipeline that pre-computes credits
+    //    via $lookup + $group + $addFields, then $sort + $skip + $limit in the DB
+    //    layer to avoid memory pressure.
     const allProfiles = await Profile.find({}).lean();
     const nameMap = new Map<string, string | null>();
     for (const p of allProfiles) {
@@ -154,11 +159,15 @@ router.get('/', async (req: Request, res: Response) => {
     // 5. Sort by total credits descending (0-credit users sink to bottom)
     entries.sort((a, b) => b.total_credits - a.total_credits);
 
-    // 6. Find current user's rank if address provided
+    // 6. Find current user's rank if address provided.
+    //    To prevent address enumeration (an oracle that reveals whether a given
+    //    Sui address has ever authenticated), unregistered addresses get a fake
+    //    rank of total_stakers+1 instead of null. This way the response looks
+    //    identical whether the address exists or not.
     let currentUserRank: number | null = null;
     if (queryAddress) {
       const idx = entries.findIndex(e => e.address === queryAddress);
-      currentUserRank = idx >= 0 ? idx + 1 : null;
+      currentUserRank = idx >= 0 ? idx + 1 : entries.length + 1;
     }
 
     // Strip full address from public response

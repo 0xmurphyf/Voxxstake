@@ -22,12 +22,37 @@ if (!fs.existsSync(CACHE_DIR)) {
 // In-memory cache of objectId → cached filename (survives within process lifetime)
 const filenameCache = new Map<string, string>();
 
+// ─── Per-IP rate limit for the image proxy ──────────────────────
+// No auth, no login — anyone can call this endpoint. Without a throttle it's
+// a free RPC-proxy: an attacker can enumerate random objectIds and burn our
+// Sui RPC quota. Capped at 5 req/s per IP (generous for normal use, tight
+// enough to prevent abuse).
+const IMAGE_MIN_INTERVAL_MS = 200; // 5 req/s
+const imageLastSeen = new Map<string, number>();
+
+function imageThrottle(req: Request, res: Response): boolean {
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  const now = Date.now();
+  const last = imageLastSeen.get(ip) || 0;
+  if (now - last < IMAGE_MIN_INTERVAL_MS) {
+    res.status(429).json({ detail: 'Too many image requests, slow down.' });
+    return false;
+  }
+  imageLastSeen.set(ip, now);
+  if (imageLastSeen.size % 500 === 0) {
+    const cutoff = now - IMAGE_MIN_INTERVAL_MS * 4;
+    for (const [k, v] of imageLastSeen) if (v < cutoff) imageLastSeen.delete(k);
+  }
+  return true;
+}
+
 /**
  * GET /api/image/:objectId
  * Proxy an NFT image: fetch from IPFS/chain, cache locally, serve from cache.
  * Returns the image binary with correct Content-Type.
  */
 router.get('/:objectId', async (req: Request, res: Response) => {
+  if (!imageThrottle(req, res)) return;
   try {
     const { objectId } = req.params;
 
@@ -62,10 +87,12 @@ router.get('/:objectId', async (req: Request, res: Response) => {
     }
 
     if (!imageUrl) {
-      // Return a placeholder — transparent 1x1 pixel SVG
-      res.set('Content-Type', 'image/svg+xml');
+      // Return a placeholder — transparent 1x1 pixel PNG (NOT SVG — SVG can
+      // contain executable JS and we've removed it from the allowlist).
+      res.set('Content-Type', 'image/png');
       res.set('Cache-Control', 'public, max-age=3600');
-      res.send(`<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>`);
+      // 1x1 transparent PNG (smallest valid PNG, 68 bytes base64)
+      res.send(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64'));
       return;
     }
 
@@ -119,9 +146,9 @@ router.get('/:objectId', async (req: Request, res: Response) => {
     res.send(buffer);
   } catch (err) {
     console.error('Image proxy error:', err);
-    res.set('Content-Type', 'image/svg+xml');
+    res.set('Content-Type', 'image/png');
     res.set('Cache-Control', 'public, max-age=3600');
-    res.send(`<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>`);
+    res.send(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64'));
   }
 });
 

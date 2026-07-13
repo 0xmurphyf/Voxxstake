@@ -409,7 +409,7 @@ const ZKLOGIN_FLAG = 0x05;
  */
 export async function verifySignature(
   address: string,
-  _nonce: string,
+  _nonce: string,  // nonce is validated by the caller (auth.ts:136 compares decoded bytes)
   signatureB64: string,
   bytesB64: string
 ): Promise<boolean> {

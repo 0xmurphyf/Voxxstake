@@ -1,4 +1,5 @@
 import { Stake } from '../models/Stake';
+import { StakeSummary } from '../models/StakeSummary';
 import { getOwnedObjects, extractImageUrl, extractNftName } from './sui';
 import { VOXX_TYPE, POINTS_PER_NFT_PER_HOUR } from '../types';
 import { getHoldingMultiplier } from './staking';
@@ -132,6 +133,15 @@ async function syncAllAddresses(): Promise<void> {
         } else if (existingMap.size > 0 && ownedSet.size === 0) {
           console.warn(`[BG Sync] Kiosk scan failed for ${address.slice(0, 10)}... — 0 direct NFTs, ${existingMap.size} DB stakes preserved`);
         }
+
+        // Keep StakeSummary.nft_count in sync with the ground truth from chain,
+        // so /cached and /positions (rate-limit fallback) always report the real
+        // owned count — not a stale value from the last user-triggered sync.
+        await StakeSummary.findOneAndUpdate(
+          { address },
+          { $set: { nft_count: ownedSet.size, last_synced: new Date() } },
+          { upsert: true }
+        );
 
         updated++;
       } catch (err) {

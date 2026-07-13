@@ -67,7 +67,6 @@ router.post('/auth', async (req: Request, res: Response) => {
       return;
     }
 
-    const ip = clientIp(req);
     const now = Date.now();
 
     // Global lock: any 5 consecutive failures freeze the terminal for everyone.

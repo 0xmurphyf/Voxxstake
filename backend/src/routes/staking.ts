@@ -205,9 +205,13 @@ router.post('/sync', authMiddleware, async (req: AuthRequest, res: Response) => 
   }
 
   try {
+    const { ownedMap, sellAlerts } = await syncStakesForAddress(address);
+
+    // Only set the rate limit AFTER a successful sync. If the chain call
+    // fails (RPC timeout, etc.), the user can retry immediately instead of
+    // being locked out for 60s with no data.
     setSyncRateLimit(address);
 
-    const { ownedMap, sellAlerts } = await syncStakesForAddress(address);
     const nftCount = ownedMap.size;
     const holdingMultiplier = getHoldingMultiplier(nftCount);
 
@@ -284,9 +288,11 @@ router.get('/positions', authMiddleware, async (req: AuthRequest, res: Response)
   }
 
   try {
+    const { ownedMap, sellAlerts } = await syncStakesForAddress(address);
+
+    // Only set the rate limit AFTER a successful sync.
     setSyncRateLimit(address);
 
-    const { ownedMap, sellAlerts } = await syncStakesForAddress(address);
     const nftCount = ownedMap.size;
     const holdingMultiplier = getHoldingMultiplier(nftCount);
 

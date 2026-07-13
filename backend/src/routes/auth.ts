@@ -70,7 +70,13 @@ router.post('/nonce', async (req: Request, res: Response) => {
 
     const normalized = normalizeAddress(address);
 
-    // Clean up any existing unused nonces for this address (prevents accumulation)
+    // Delete any existing unused nonces for this address (prevents accumulation).
+    // NOTE: there is a narrow race window between deleteMany and create below —
+    // concurrent requests for the same address could both pass the delete and
+    // both insert, leaving two valid nonces. The per-IP 3s throttle (authThrottle)
+    // makes this extremely unlikely in practice (same IP can't fire two /nonce
+    // calls within 3s). If this ever becomes a concern, add a unique compound
+    // index on { address: 1, used: 1 } with partialFilterExpression { used: false }.
     await Nonce.deleteMany({ address: normalized, used: false });
 
     const randomPart = crypto.randomBytes(16).toString('hex');
