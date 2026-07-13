@@ -314,6 +314,73 @@ router.get('/full-scan', async (req: Request, res: Response) => {
   safeJson(res, 200, { ok: true, job: fullScanJob });
 });
 
+// ─── POST /api/root/adjust-credit ───────────────────────────────
+// Adjust a user's total_credits and/or multiplier. Requires root JWT.
+// Body: { address, credit_delta?: number, multiplier?: number }
+// - credit_delta: positive to add, negative to reduce
+// - multiplier: set to a specific value (e.g. 1.5)
+router.post('/adjust-credit', async (req: Request, res: Response) => {
+  if (!requireRoot(req, res)) return;
+
+  const { address, credit_delta, multiplier } = req.body || {};
+  if (!address || typeof address !== 'string') {
+    safeJson(res, 400, { detail: 'address is required' });
+    return;
+  }
+
+  const addr = address.toLowerCase();
+  const hasCredit = typeof credit_delta === 'number' && credit_delta !== 0;
+  const hasMult = typeof multiplier === 'number' && multiplier > 0;
+  if (!hasCredit && !hasMult) {
+    safeJson(res, 400, { detail: 'credit_delta (number) or multiplier (number) is required' });
+    return;
+  }
+
+  try {
+    const snapshot = await RankingSnapshot.findOne({ address: addr });
+    if (!snapshot) {
+      safeJson(res, 404, { detail: 'Address not found in ranking. Sync first.' });
+      return;
+    }
+
+    const changes: string[] = [];
+
+    if (hasCredit) {
+      const oldCredits = snapshot.total_credits;
+      snapshot.total_credits = Math.max(0, oldCredits + credit_delta);
+      await snapshot.save();
+      changes.push(`credits: ${oldCredits} → ${snapshot.total_credits} (${credit_delta >= 0 ? '+' : ''}${credit_delta})`);
+    }
+
+    if (hasMult) {
+      const oldMult = snapshot.multiplier;
+      snapshot.multiplier = multiplier;
+      await snapshot.save();
+      changes.push(`multiplier: ${oldMult} → ${multiplier}`);
+
+      // Also update session_multiplier on all active stakes so the
+      // change persists through the next sync cycle.
+      await Stake.updateMany(
+        { address: addr, status: 'active' },
+        { $set: { session_multiplier: multiplier } }
+      );
+    }
+
+    safeJson(res, 200, {
+      ok: true,
+      address: addr,
+      changes: changes.join('; '),
+      snapshot: {
+        total_credits: snapshot.total_credits,
+        multiplier: snapshot.multiplier,
+      },
+    });
+  } catch (err) {
+    console.error('Root adjust-credit error:', err);
+    safeJson(res, 500, { detail: 'Adjustment failed' });
+  }
+});
+
 export default router;
 
 // Startup diagnostic — logs only the configured clearance-code LENGTH (never

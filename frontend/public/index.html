@@ -526,6 +526,8 @@
         .filez-results th:hover { background: rgba(0,255,255,0.18); color: #fff; }
         .filez-results th.sorted { color: #fff; text-shadow: 0 0 6px rgba(0,255,255,0.7); }
         .filez-results tr:nth-child(even) td { background: rgba(0,255,255,0.03); }
+        .fz-adj-btn { background: rgba(255,255,0,0.08); border: 1px solid rgba(255,255,0,0.3); color: #ff0; font-family: inherit; font-size: 0.75rem; padding: 2px 8px; cursor: pointer; border-radius: 3px; }
+        .fz-adj-btn:hover { background: rgba(255,255,0,0.2); border-color: #ff0; }
         .term-input { background: #0a0a0a; border: 1px solid #333; color: #0ff; font-family: inherit; padding: 6px 10px; border-radius: 4px; }
         .term-input:focus { outline: none; border-color: #0ff; }
 
@@ -1038,6 +1040,28 @@
             <div class="root-output" id="root-output" role="status" aria-live="polite"></div>
             <div class="modal-buttons">
                 <button class="modal-btn no-btn" onclick="closeRootTerminal()">CLOSE</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="adjust-modal" role="dialog" aria-modal="true" aria-labelledby="adjust-modal-title">
+        <div class="modal-box root-modal-box" style="max-width:420px;">
+            <h3 id="adjust-modal-title">ADJUST CREDITS</h3>
+            <p class="root-hint" id="adjust-addr" style="margin-bottom:12px;"></p>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+                <div>
+                    <label class="hud-label" style="display:block;margin-bottom:4px;">CREDIT DELTA (+add / -reduce)</label>
+                    <input type="number" id="adjust-credit" class="term-input" style="width:100%;" placeholder="e.g. 500 or -200" step="any" />
+                </div>
+                <div>
+                    <label class="hud-label" style="display:block;margin-bottom:4px;">MULTIPLIER (set value)</label>
+                    <input type="number" id="adjust-multiplier" class="term-input" style="width:100%;" placeholder="e.g. 1.5" step="0.001" min="1" />
+                </div>
+                <div id="adjust-result" style="font-size:0.75rem;min-height:1.2em;"></div>
+            </div>
+            <div class="modal-buttons" style="margin-top:16px;">
+                <button class="modal-btn" id="adjust-apply" onclick="applyAdjust()">APPLY</button>
+                <button class="modal-btn no-btn" onclick="closeAdjustModal()">CANCEL</button>
             </div>
         </div>
     </div>
@@ -1701,6 +1725,7 @@
 
         function renderFileZTable(rows, sortKey, sortDir) {
             if (!rows || !rows.length) return '<span style="color:#888;">NO RECORDS.</span>';
+            const view = document.getElementById('filez-view').value;
             const cols = Object.keys(rows[0]).filter(k => k !== '__v');
             let html = '<table><thead><tr>';
             cols.forEach(c => {
@@ -1708,10 +1733,17 @@
                 const ind = active ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
                 html += '<th data-key="' + escapeHtml(c) + '" class="' + (active ? 'sorted' : '') + '" title="Sort by ' + escapeHtml(c) + '">' + escapeHtml(c) + ind + '</th>';
             });
+            if (view === 'profiles') html += '<th>ACTIONS</th>';
             html += '</tr></thead><tbody>';
             rows.forEach(row => {
                 html += '<tr>';
                 cols.forEach(c => { html += '<td>' + escapeHtml(fmtVal(row[c])) + '</td>'; });
+                if (view === 'profiles') {
+                    const addr = escapeHtml(row.address || '');
+                    html += '<td style="white-space:nowrap;">' +
+                        '<button class="fz-adj-btn" onclick="showAdjustModal(\'' + addr + '\',' + (row.total_credits || 0) + ',' + (row.multiplier || 1) + ')" title="Adjust credits/multiplier">±</button>' +
+                        '</td>';
+                }
                 html += '</tr>';
             });
             html += '</tbody></table>';
@@ -1811,6 +1843,81 @@
                 }, 2000);
             }
         }
+
+        // ─── Credit/Multiplier adjustment modal ───
+        let adjustAddress = null;
+
+        function showAdjustModal(address, currentCredits, currentMultiplier) {
+            adjustAddress = address;
+            document.getElementById('adjust-addr').textContent = address;
+            document.getElementById('adjust-credit').value = '';
+            document.getElementById('adjust-multiplier').value = '';
+            document.getElementById('adjust-result').textContent =
+                'Current: ' + currentCredits + ' credits, ' + currentMultiplier.toFixed(3) + 'x multiplier';
+            document.getElementById('adjust-result').style.color = '#888';
+            document.getElementById('adjust-modal').classList.add('active');
+        }
+
+        function closeAdjustModal() {
+            document.getElementById('adjust-modal').classList.remove('active');
+            adjustAddress = null;
+        }
+
+        async function applyAdjust() {
+            if (!rootToken || !adjustAddress) return;
+            const creditVal = document.getElementById('adjust-credit').value.trim();
+            const multVal = document.getElementById('adjust-multiplier').value.trim();
+            const resultEl = document.getElementById('adjust-result');
+            const applyBtn = document.getElementById('adjust-apply');
+
+            const body = { address: adjustAddress };
+            if (creditVal !== '') body.credit_delta = Number(creditVal);
+            if (multVal !== '') body.multiplier = Number(multVal);
+
+            if (!body.credit_delta && !body.multiplier) {
+                resultEl.textContent = 'Enter a credit delta or multiplier value.';
+                resultEl.style.color = '#f55';
+                return;
+            }
+
+            applyBtn.disabled = true;
+            applyBtn.textContent = 'APPLYING…';
+            try {
+                const r = await fetch('/api/root/adjust-credit', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: 'Bearer ' + rootToken,
+                    },
+                    body: JSON.stringify(body),
+                });
+                const data = await r.json().catch(() => ({}));
+                if (r.status === 401 || r.status === 403) {
+                    lockFileZ();
+                    closeAdjustModal();
+                    return;
+                }
+                if (r.ok) {
+                    resultEl.textContent = '✓ ' + data.changes;
+                    resultEl.style.color = '#0f0';
+                    setTimeout(() => { closeAdjustModal(); queryFileZ(); }, 1500);
+                } else {
+                    resultEl.textContent = '✗ ' + (data.detail || 'Failed');
+                    resultEl.style.color = '#f55';
+                }
+            } catch (e) {
+                resultEl.textContent = '✗ Network error';
+                resultEl.style.color = '#f55';
+            } finally {
+                applyBtn.disabled = false;
+                applyBtn.textContent = 'APPLY';
+            }
+        }
+
+        // Close adjust modal on overlay click
+        document.addEventListener('click', (e) => {
+            if (e.target.id === 'adjust-modal') closeAdjustModal();
+        });
 
         const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
