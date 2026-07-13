@@ -71,16 +71,17 @@ router.post('/nonce', async (req: Request, res: Response) => {
     // Human-readable message so the user's wallet shows what they're signing
     const nonce = `Apply for Neoterra Citizenship\n\nWallet: ${normalized}\nNonce: ${randomPart}`;
 
-    // Race-safe nonce creation:
-    //   1. Delete any existing unused nonce for this address (cleanup).
-    //   2. Insert the new nonce. The unique partial index on { address, used: false }
-    //      (see models/Nonce.ts) guarantees at most one unused nonce per address.
+    // Race-safe nonce creation: INSERT only (never UPDATE).
     //
-    //   If two concurrent requests both delete+insert, one hits E11000.
-    //   The loser reads back the winner's nonce and returns THAT to the client,
-    //   so both clients receive the same nonce and /verify works for both.
+    //   The unique partial index on { address, used: false } (see models/Nonce.ts)
+    //   guarantees at most one unused nonce per address. When two concurrent
+    //   requests both try to insert, one hits E11000. The loser reads back the
+    //   winner's nonce and returns THAT to the client — both clients receive
+    //   the same nonce and /verify works for both.
+    //
+    //   Old unused nonces are cleaned up by the TTL index on created_at
+    //   (NONCE_EXPIRY_SECONDS + 60s), so we never need to delete them explicitly.
     try {
-      await Nonce.deleteMany({ address: normalized, used: false });
       await Nonce.create({ address: normalized, nonce, created_at: new Date() });
     } catch (err: unknown) {
       if (
@@ -94,9 +95,8 @@ router.post('/nonce', async (req: Request, res: Response) => {
           res.json({ nonce: existing.nonce, address: normalized });
           return;
         }
-        // Edge case: existing nonce expired/was used between E11000 and read.
-        // Retry the whole delete+insert (rare, guarded by throttle).
-        await Nonce.deleteMany({ address: normalized, used: false });
+        // Edge case: existing nonce expired / was TTL-deleted between E11000
+        // and our read. Retry the insert (rare, guarded by throttle).
         await Nonce.create({ address: normalized, nonce, created_at: new Date() });
       } else {
         throw err;
