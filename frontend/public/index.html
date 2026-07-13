@@ -1814,6 +1814,10 @@
                     syncBtn.textContent = '✓ SYNCED';
                     syncBtn.style.color = '#0f0';
                     syncBtn.style.borderColor = '#0f0';
+                    // Auto re-query after sync completes so the table reflects
+                    // the fresh data immediately. The sync is fire-and-forget
+                    // on the server, so we wait a few seconds for it to finish.
+                    setTimeout(() => { queryFileZ(); }, 3000);
                     setTimeout(() => {
                         syncBtn.textContent = 'SYNC';
                         syncBtn.style.color = '#0ff';

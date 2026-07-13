@@ -28,6 +28,10 @@ export function WaitingList({ authToken, profileVersion }) {
 
   useEffect(() => {
     fetchRankings();
+    // Auto-refresh every 30s so the waiting list stays in sync with
+    // background sync cycles and manual adjustments from File Z.
+    const interval = setInterval(fetchRankings, 30_000);
+    return () => clearInterval(interval);
   }, [fetchRankings, profileVersion]);
 
   if (loading) {
