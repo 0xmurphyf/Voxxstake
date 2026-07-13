@@ -5,6 +5,7 @@ import { config } from '../config';
 import { Profile } from '../models/Profile';
 import { Stake } from '../models/Stake';
 import { StakeSummary } from '../models/StakeSummary';
+import { RankingSnapshot } from '../models/RankingSnapshot';
 import { Nonce } from '../models/Nonce';
 import { SyncReport, triggerAddressSync, triggerSync } from '../services/backgroundSync';
 
@@ -188,20 +189,27 @@ router.get('/query', async (req: Request, res: Response) => {
     // that have never completed a scan.
     if (view === 'profiles' && rows.length > 0) {
       const addresses = rows.map((r: any) => r.address);
-      const [summaries, activeStakeCounts] = await Promise.all([
+      const [summaries, activeStakeCounts, rankingSnapshots] = await Promise.all([
         StakeSummary.find({ address: { $in: addresses } }).lean(),
         Stake.aggregate([
           { $match: { address: { $in: addresses }, status: 'active' } },
           { $group: { _id: '$address', nft_count: { $sum: 1 } } },
         ]),
+        RankingSnapshot.find({ address: { $in: addresses } }).lean(),
       ]);
       const summaryMap = new Map(summaries.map((summary) => [summary.address, summary.nft_count]));
       const activeCountMap = new Map<string, number>();
       for (const count of activeStakeCounts) {
         activeCountMap.set(count._id, count.nft_count);
       }
+      const rankingMap = new Map(
+        rankingSnapshots.map((r) => [r.address, { multiplier: r.multiplier, total_credits: r.total_credits }])
+      );
       for (const row of rows as any[]) {
         row.nft_count = summaryMap.get(row.address) ?? activeCountMap.get(row.address) ?? 0;
+        const rank = rankingMap.get(row.address);
+        row.multiplier = rank?.multiplier ?? 1.0;
+        row.total_credits = rank?.total_credits ?? 0;
       }
     }
 
