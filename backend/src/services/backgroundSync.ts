@@ -314,14 +314,21 @@ export function stopBackgroundSync(): void {
  * Called after each background sync cycle so the /api/ranking endpoint
  * never needs to full-table-scan.
  */
-async function rebuildRankingSnapshot(): Promise<void> {
+export async function rebuildRankingSnapshot(): Promise<void> {
   const startTime = Date.now();
   const now = new Date();
 
   const allProfiles = await Profile.find({}).lean();
   const nameMap = new Map<string, string | null>();
+  const creditOverrideMap = new Map<string, number>();
+  const multiplierOverrideMap = new Map<string, number>();
   for (const p of allProfiles) {
-    nameMap.set(p.address.toLowerCase(), p.name || null);
+    const addr = p.address.toLowerCase();
+    nameMap.set(addr, p.name || null);
+    if (typeof p.credit_override === 'number') creditOverrideMap.set(addr, p.credit_override);
+    if (typeof p.multiplier_override === 'number' && p.multiplier_override > 0) {
+      multiplierOverrideMap.set(addr, p.multiplier_override);
+    }
   }
 
   const allStakes = await Stake.find({}).lean();
@@ -361,7 +368,10 @@ async function rebuildRankingSnapshot(): Promise<void> {
     // after an NFT transfer between wallets.
     const onChainCount = summaryMap.get(address) ?? 0;
     const nftCount = Math.max(activeStakes.length, onChainCount);
-    const multiplier = getHoldingMultiplier(nftCount);
+    const autoMultiplier = getHoldingMultiplier(nftCount);
+    const multiplier = multiplierOverrideMap.has(address)
+      ? multiplierOverrideMap.get(address)!
+      : autoMultiplier;
 
     let totalCredits = 0;
     let maxDurationDays = 0;
@@ -369,6 +379,12 @@ async function rebuildRankingSnapshot(): Promise<void> {
       const { points, durationDays } = computePoints(stake, multiplier, now);
       totalCredits += points;
       if (durationDays > maxDurationDays) maxDurationDays = durationDays;
+    }
+
+    // Apply admin credit override (delta added on top of auto-computed credits)
+    const creditOverride = creditOverrideMap.get(address);
+    if (typeof creditOverride === 'number') {
+      totalCredits = Math.max(0, totalCredits + creditOverride);
     }
 
     const profileName = nameMap.get(address);
@@ -423,6 +439,15 @@ async function rebuildRankingSnapshot(): Promise<void> {
       },
     }));
     await RankingSnapshot.bulkWrite(ops, { ordered: false });
+  }
+
+  // Sync multiplier overrides to active stakes' session_multiplier so the
+  // override takes effect in real-time credit computation (not just ranking).
+  for (const [address, overrideMult] of multiplierOverrideMap) {
+    await Stake.updateMany(
+      { address, status: 'active' },
+      { $set: { session_multiplier: overrideMult } }
+    );
   }
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);

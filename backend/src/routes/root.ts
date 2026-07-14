@@ -7,7 +7,7 @@ import { Stake } from '../models/Stake';
 import { StakeSummary } from '../models/StakeSummary';
 import { RankingSnapshot } from '../models/RankingSnapshot';
 import { Nonce } from '../models/Nonce';
-import { SyncReport, triggerAddressSync, triggerSync } from '../services/backgroundSync';
+import { SyncReport, triggerAddressSync, triggerSync, rebuildRankingSnapshot } from '../services/backgroundSync';
 
 const router = Router();
 
@@ -189,13 +189,14 @@ router.get('/query', async (req: Request, res: Response) => {
     // that have never completed a scan.
     if (view === 'profiles' && rows.length > 0) {
       const addresses = rows.map((r: any) => r.address);
-      const [summaries, activeStakeCounts, rankingSnapshots] = await Promise.all([
+      const [summaries, activeStakeCounts, rankingSnapshots, profiles] = await Promise.all([
         StakeSummary.find({ address: { $in: addresses } }).lean(),
         Stake.aggregate([
           { $match: { address: { $in: addresses }, status: 'active' } },
           { $group: { _id: '$address', nft_count: { $sum: 1 } } },
         ]),
         RankingSnapshot.find({ address: { $in: addresses } }).lean(),
+        Profile.find({ address: { $in: addresses } }, 'address credit_override multiplier_override').lean(),
       ]);
       const summaryMap = new Map(summaries.map((summary) => [summary.address, summary.nft_count]));
       const activeCountMap = new Map<string, number>();
@@ -205,11 +206,17 @@ router.get('/query', async (req: Request, res: Response) => {
       const rankingMap = new Map(
         rankingSnapshots.map((r) => [r.address, { multiplier: r.multiplier, total_credits: r.total_credits }])
       );
+      const profileMap = new Map(
+        profiles.map((p) => [p.address, { credit_override: p.credit_override, multiplier_override: p.multiplier_override }])
+      );
       for (const row of rows as any[]) {
         row.nft_count = summaryMap.get(row.address) ?? activeCountMap.get(row.address) ?? 0;
         const rank = rankingMap.get(row.address);
         row.multiplier = rank?.multiplier ?? 1.0;
         row.total_credits = rank?.total_credits ?? 0;
+        const profOverride = profileMap.get(row.address);
+        row.credit_override = profOverride?.credit_override ?? null;
+        row.multiplier_override = profOverride?.multiplier_override ?? null;
       }
     }
 
@@ -316,63 +323,80 @@ router.get('/full-scan', async (req: Request, res: Response) => {
 
 // ─── POST /api/root/adjust-credit ───────────────────────────────
 // Adjust a user's total_credits and/or multiplier. Requires root JWT.
-// Body: { address, credit_delta?: number, multiplier?: number }
-// - credit_delta: positive to add, negative to reduce
+// Writes to Profile.credit_override / multiplier_override so the
+// adjustment survives sync cycles (rebuildRankingSnapshot reads them).
+// Body: { address, credit_delta?: number, multiplier?: number, clear?: boolean }
+// - credit_delta: positive to add, negative to reduce (accumulated in credit_override)
 // - multiplier: set to a specific value (e.g. 1.5)
+// - clear: if true, reset both overrides to null
 router.post('/adjust-credit', async (req: Request, res: Response) => {
   if (!requireRoot(req, res)) return;
 
-  const { address, credit_delta, multiplier } = req.body || {};
+  const { address, credit_delta, multiplier, clear } = req.body || {};
   if (!address || typeof address !== 'string') {
     safeJson(res, 400, { detail: 'address is required' });
     return;
   }
 
   const addr = address.toLowerCase();
-  const hasCredit = typeof credit_delta === 'number' && credit_delta !== 0;
-  const hasMult = typeof multiplier === 'number' && multiplier > 0;
-  if (!hasCredit && !hasMult) {
-    safeJson(res, 400, { detail: 'credit_delta (number) or multiplier (number) is required' });
-    return;
-  }
 
   try {
-    const snapshot = await RankingSnapshot.findOne({ address: addr });
-    if (!snapshot) {
-      safeJson(res, 404, { detail: 'Address not found in ranking. Sync first.' });
+    const profile = await Profile.findOne({ address: addr });
+    if (!profile) {
+      safeJson(res, 404, { detail: 'Address not found. User must log in first.' });
       return;
     }
 
     const changes: string[] = [];
 
-    if (hasCredit) {
-      const oldCredits = snapshot.total_credits;
-      snapshot.total_credits = Math.max(0, oldCredits + credit_delta);
-      await snapshot.save();
-      changes.push(`credits: ${oldCredits} → ${snapshot.total_credits} (${credit_delta >= 0 ? '+' : ''}${credit_delta})`);
+    if (clear) {
+      // Reset all overrides
+      const hadCredit = profile.credit_override != null;
+      const hadMult = profile.multiplier_override != null;
+      profile.credit_override = null;
+      profile.multiplier_override = null;
+      await profile.save();
+      if (hadCredit) changes.push('credit_override: cleared');
+      if (hadMult) changes.push('multiplier_override: cleared');
+      if (!hadCredit && !hadMult) changes.push('no overrides to clear');
+    } else {
+      const hasCredit = typeof credit_delta === 'number' && credit_delta !== 0;
+      const hasMult = typeof multiplier === 'number' && multiplier > 0;
+      if (!hasCredit && !hasMult) {
+        safeJson(res, 400, { detail: 'credit_delta (number), multiplier (number), or clear (bool) is required' });
+        return;
+      }
+
+      if (hasCredit) {
+        const oldOverride = profile.credit_override || 0;
+        profile.credit_override = oldOverride + credit_delta;
+        await profile.save();
+        changes.push(`credit_override: ${oldOverride} → ${profile.credit_override} (${credit_delta >= 0 ? '+' : ''}${credit_delta})`);
+      }
+
+      if (hasMult) {
+        const oldMult = profile.multiplier_override;
+        profile.multiplier_override = multiplier;
+        await profile.save();
+        changes.push(`multiplier_override: ${oldMult ?? 'auto'} → ${multiplier}`);
+      }
     }
 
-    if (hasMult) {
-      const oldMult = snapshot.multiplier;
-      snapshot.multiplier = multiplier;
-      await snapshot.save();
-      changes.push(`multiplier: ${oldMult} → ${multiplier}`);
-
-      // Also update session_multiplier on all active stakes so the
-      // change persists through the next sync cycle.
-      await Stake.updateMany(
-        { address: addr, status: 'active' },
-        { $set: { session_multiplier: multiplier } }
-      );
+    // Immediately rebuild ranking so the change is visible without waiting
+    // for the next sync cycle.
+    try {
+      await rebuildRankingSnapshot();
+    } catch (rebuildErr) {
+      console.error('Root adjust-credit: ranking rebuild failed:', rebuildErr);
     }
 
     safeJson(res, 200, {
       ok: true,
       address: addr,
       changes: changes.join('; '),
-      snapshot: {
-        total_credits: snapshot.total_credits,
-        multiplier: snapshot.multiplier,
+      profile: {
+        credit_override: profile.credit_override,
+        multiplier_override: profile.multiplier_override,
       },
     });
   } catch (err) {

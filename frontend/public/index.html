@@ -1061,6 +1061,7 @@
             </div>
             <div class="modal-buttons" style="margin-top:16px;">
                 <button class="modal-btn" id="adjust-apply" onclick="applyAdjust()">APPLY</button>
+                <button class="modal-btn" id="adjust-clear" onclick="applyAdjust(true)" style="background:rgba(255,80,80,0.15);border-color:rgba(255,80,80,0.4);color:#f66;">CLEAR OVERRIDE</button>
                 <button class="modal-btn no-btn" onclick="closeAdjustModal()">CANCEL</button>
             </div>
         </div>
@@ -1740,8 +1741,13 @@
                 cols.forEach(c => { html += '<td>' + escapeHtml(fmtVal(row[c])) + '</td>'; });
                 if (view === 'profiles') {
                     const addr = escapeHtml(row.address || '');
+                    const co = row.credit_override != null ? row.credit_override : 'null';
+                    const mo = row.multiplier_override != null ? row.multiplier_override : 'null';
                     html += '<td style="white-space:nowrap;">' +
-                        '<button class="fz-adj-btn" onclick="showAdjustModal(\'' + addr + '\',' + (row.total_credits || 0) + ',' + (row.multiplier || 1) + ')" title="Adjust credits/multiplier">±</button>' +
+                        '<button class="fz-adj-btn" onclick="showAdjustModal(\'' + addr + '\',' + (row.total_credits || 0) + ',' + (row.multiplier || 1) + ',' + co + ',' + mo + ')" title="Adjust credits/multiplier">±</button>' +
+                        (row.credit_override != null || row.multiplier_override != null
+                            ? ' <span style="color:#ff0;font-size:0.65rem;" title="Has manual override">⚡</span>'
+                            : '') +
                         '</td>';
                 }
                 html += '</tr>';
@@ -1851,14 +1857,18 @@
         // ─── Credit/Multiplier adjustment modal ───
         let adjustAddress = null;
 
-        function showAdjustModal(address, currentCredits, currentMultiplier) {
+        function showAdjustModal(address, currentCredits, currentMultiplier, creditOverride, multOverride) {
             adjustAddress = address;
             document.getElementById('adjust-addr').textContent = address;
             document.getElementById('adjust-credit').value = '';
             document.getElementById('adjust-multiplier').value = '';
-            document.getElementById('adjust-result').textContent =
-                'Current: ' + currentCredits + ' credits, ' + currentMultiplier.toFixed(3) + 'x multiplier';
+            let info = 'Current: ' + currentCredits + ' credits, ' + currentMultiplier.toFixed(3) + 'x multiplier';
+            if (creditOverride != null) info += ' | credit_override: ' + creditOverride;
+            if (multOverride != null) info += ' | multiplier_override: ' + multOverride;
+            document.getElementById('adjust-result').textContent = info;
             document.getElementById('adjust-result').style.color = '#888';
+            const clearBtn = document.getElementById('adjust-clear');
+            clearBtn.style.display = (creditOverride != null || multOverride != null) ? '' : 'none';
             document.getElementById('adjust-modal').classList.add('active');
         }
 
@@ -1867,25 +1877,31 @@
             adjustAddress = null;
         }
 
-        async function applyAdjust() {
+        async function applyAdjust(clearMode) {
             if (!rootToken || !adjustAddress) return;
-            const creditVal = document.getElementById('adjust-credit').value.trim();
-            const multVal = document.getElementById('adjust-multiplier').value.trim();
             const resultEl = document.getElementById('adjust-result');
             const applyBtn = document.getElementById('adjust-apply');
+            const clearBtn = document.getElementById('adjust-clear');
 
             const body = { address: adjustAddress };
-            if (creditVal !== '') body.credit_delta = Number(creditVal);
-            if (multVal !== '') body.multiplier = Number(multVal);
 
-            if (!body.credit_delta && !body.multiplier) {
-                resultEl.textContent = 'Enter a credit delta or multiplier value.';
-                resultEl.style.color = '#f55';
-                return;
+            if (clearMode) {
+                body.clear = true;
+            } else {
+                const creditVal = document.getElementById('adjust-credit').value.trim();
+                const multVal = document.getElementById('adjust-multiplier').value.trim();
+                if (creditVal !== '') body.credit_delta = Number(creditVal);
+                if (multVal !== '') body.multiplier = Number(multVal);
+                if (!body.credit_delta && !body.multiplier) {
+                    resultEl.textContent = 'Enter a credit delta or multiplier value.';
+                    resultEl.style.color = '#f55';
+                    return;
+                }
             }
 
             applyBtn.disabled = true;
-            applyBtn.textContent = 'APPLYING…';
+            if (clearBtn) clearBtn.disabled = true;
+            applyBtn.textContent = clearMode ? 'CLEARING…' : 'APPLYING…';
             try {
                 const r = await fetch('/api/root/adjust-credit', {
                     method: 'POST',
@@ -1914,6 +1930,7 @@
                 resultEl.style.color = '#f55';
             } finally {
                 applyBtn.disabled = false;
+                if (clearBtn) clearBtn.disabled = false;
                 applyBtn.textContent = 'APPLY';
             }
         }

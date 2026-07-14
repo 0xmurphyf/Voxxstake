@@ -10,6 +10,11 @@ export interface IProfile extends Document {
   // Privacy-minimal: only the most recent IP is kept, not a full history.
   last_ip: string | null;
   last_seen_at: string | null;
+  // Admin overrides (set via File Z). Persist across sync cycles.
+  // credit_override: delta added to auto-computed total_credits (can be negative).
+  // multiplier_override: replaces auto-computed multiplier when set.
+  credit_override: number | null;
+  multiplier_override: number | null;
 }
 
 const ProfileSchema = new Schema<IProfile>(
@@ -21,6 +26,8 @@ const ProfileSchema = new Schema<IProfile>(
     updated_at: { type: String, default: () => new Date().toISOString() },
     last_ip: { type: String, default: null, index: true },
     last_seen_at: { type: String, default: null },
+    credit_override: { type: Number, default: null },
+    multiplier_override: { type: Number, default: null },
   },
   { timestamps: false }
 );
