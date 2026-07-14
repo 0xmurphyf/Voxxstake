@@ -55,8 +55,8 @@ async function applyAdminOverrides(
   const profile = await Profile.findOne({ address }, 'credit_override multiplier_override').lean();
   if (!profile) return;
 
-  if (typeof profile.multiplier_override === 'number' && profile.multiplier_override > 0) {
-    stats.holding_multiplier = profile.multiplier_override;
+  if (typeof profile.multiplier_override === 'number') {
+    stats.holding_multiplier = Math.max(0.001, stats.holding_multiplier + profile.multiplier_override);
   }
 
   if (typeof profile.credit_override === 'number') {

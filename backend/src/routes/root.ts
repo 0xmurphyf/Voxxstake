@@ -325,14 +325,16 @@ router.get('/full-scan', async (req: Request, res: Response) => {
 // Adjust a user's total_credits and/or multiplier. Requires root JWT.
 // Writes to Profile.credit_override / multiplier_override so the
 // adjustment survives sync cycles (rebuildRankingSnapshot reads them).
-// Body: { address, credit_delta?: number, multiplier?: number, clear?: boolean }
+// Body: { address, credit_delta?: number, multiplier_delta?: number, clear?: boolean }
 // - credit_delta: positive to add, negative to reduce (accumulated in credit_override)
-// - multiplier: set to a specific value (e.g. 1.5)
+// - multiplier_delta: delta added to auto-computed multiplier (e.g. 0.5 adds 0.5x, -0.1 subtracts 0.1x)
 // - clear: if true, reset both overrides to null
 router.post('/adjust-credit', async (req: Request, res: Response) => {
   if (!requireRoot(req, res)) return;
 
-  const { address, credit_delta, multiplier, clear } = req.body || {};
+  const { address, credit_delta, multiplier_delta, multiplier, clear } = req.body || {};
+  // Backward compat: accept `multiplier` as alias for `multiplier_delta`
+  const multDelta = multiplier_delta ?? multiplier;
   if (!address || typeof address !== 'string') {
     safeJson(res, 400, { detail: 'address is required' });
     return;
@@ -361,9 +363,9 @@ router.post('/adjust-credit', async (req: Request, res: Response) => {
       if (!hadCredit && !hadMult) changes.push('no overrides to clear');
     } else {
       const hasCredit = typeof credit_delta === 'number' && credit_delta !== 0;
-      const hasMult = typeof multiplier === 'number' && multiplier > 0;
+      const hasMult = typeof multDelta === 'number' && multDelta !== 0;
       if (!hasCredit && !hasMult) {
-        safeJson(res, 400, { detail: 'credit_delta (number), multiplier (number), or clear (bool) is required' });
+        safeJson(res, 400, { detail: 'credit_delta (number), multiplier_delta (number), or clear (bool) is required' });
         return;
       }
 
@@ -375,10 +377,10 @@ router.post('/adjust-credit', async (req: Request, res: Response) => {
       }
 
       if (hasMult) {
-        const oldMult = profile.multiplier_override;
-        profile.multiplier_override = multiplier;
+        const oldDelta = profile.multiplier_override || 0;
+        profile.multiplier_override = oldDelta + multDelta;
         await profile.save();
-        changes.push(`multiplier_override: ${oldMult ?? 'auto'} → ${multiplier}`);
+        changes.push(`multiplier_delta: ${oldDelta} → ${profile.multiplier_override} (${multDelta >= 0 ? '+' : ''}${multDelta})`);
       }
     }
 

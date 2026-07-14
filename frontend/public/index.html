@@ -1054,8 +1054,8 @@
                     <input type="number" id="adjust-credit" class="term-input" style="width:100%;" placeholder="e.g. 500 or -200" step="any" />
                 </div>
                 <div>
-                    <label class="hud-label" style="display:block;margin-bottom:4px;">MULTIPLIER (set value)</label>
-                    <input type="number" id="adjust-multiplier" class="term-input" style="width:100%;" placeholder="e.g. 1.5" step="0.001" min="1" />
+                    <label class="hud-label" style="display:block;margin-bottom:4px;">MULTIPLIER DELTA (+add / -reduce)</label>
+                    <input type="number" id="adjust-multiplier" class="term-input" style="width:100%;" placeholder="e.g. 0.5 or -0.1" step="0.001" />
                 </div>
                 <div id="adjust-result" style="font-size:0.75rem;min-height:1.2em;"></div>
             </div>
@@ -1909,8 +1909,8 @@
                 const creditVal = document.getElementById('adjust-credit').value.trim();
                 const multVal = document.getElementById('adjust-multiplier').value.trim();
                 if (creditVal !== '') body.credit_delta = Number(creditVal);
-                if (multVal !== '') body.multiplier = Number(multVal);
-                if (!body.credit_delta && !body.multiplier) {
+                if (multVal !== '') body.multiplier_delta = Number(multVal);
+                if (!body.credit_delta && !body.multiplier_delta) {
                     resultEl.textContent = 'Enter a credit delta or multiplier value.';
                     resultEl.style.color = '#f55';
                     return;

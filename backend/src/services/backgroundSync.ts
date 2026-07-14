@@ -321,13 +321,13 @@ export async function rebuildRankingSnapshot(): Promise<void> {
   const allProfiles = await Profile.find({}).lean();
   const nameMap = new Map<string, string | null>();
   const creditOverrideMap = new Map<string, number>();
-  const multiplierOverrideMap = new Map<string, number>();
+  const multiplierDeltaMap = new Map<string, number>();
   for (const p of allProfiles) {
     const addr = p.address.toLowerCase();
     nameMap.set(addr, p.name || null);
     if (typeof p.credit_override === 'number') creditOverrideMap.set(addr, p.credit_override);
-    if (typeof p.multiplier_override === 'number' && p.multiplier_override > 0) {
-      multiplierOverrideMap.set(addr, p.multiplier_override);
+    if (typeof p.multiplier_override === 'number') {
+      multiplierDeltaMap.set(addr, p.multiplier_override);
     }
   }
 
@@ -369,9 +369,8 @@ export async function rebuildRankingSnapshot(): Promise<void> {
     const onChainCount = summaryMap.get(address) ?? 0;
     const nftCount = Math.max(activeStakes.length, onChainCount);
     const autoMultiplier = getHoldingMultiplier(nftCount);
-    const multiplier = multiplierOverrideMap.has(address)
-      ? multiplierOverrideMap.get(address)!
-      : autoMultiplier;
+    const multiplierDelta = multiplierDeltaMap.get(address) ?? 0;
+    const multiplier = Math.max(0.001, autoMultiplier + multiplierDelta);
 
     let totalCredits = 0;
     let maxDurationDays = 0;
@@ -408,7 +407,9 @@ export async function rebuildRankingSnapshot(): Promise<void> {
     const activeStakes = stakes.filter(s => s.status === 'active');
     const onChainCount = summaryMap.get(address) ?? 0;
     const nftCount = Math.max(activeStakes.length, onChainCount);
-    const multiplier = getHoldingMultiplier(nftCount);
+    const autoMultiplier = getHoldingMultiplier(nftCount);
+    const multiplierDelta = multiplierDeltaMap.get(address) ?? 0;
+    const multiplier = Math.max(0.001, autoMultiplier + multiplierDelta);
 
     let totalCredits = 0;
     let maxDurationDays = 0;
@@ -443,11 +444,15 @@ export async function rebuildRankingSnapshot(): Promise<void> {
 
   // Sync multiplier overrides to active stakes' session_multiplier so the
   // override takes effect in real-time credit computation (not just ranking).
-  for (const [address, overrideMult] of multiplierOverrideMap) {
-    await Stake.updateMany(
-      { address, status: 'active' },
-      { $set: { session_multiplier: overrideMult } }
-    );
+  // Use the final multiplier from each entry (auto + delta already applied).
+  for (const entry of entries) {
+    const delta = multiplierDeltaMap.get(entry.address);
+    if (delta != null && delta !== 0) {
+      await Stake.updateMany(
+        { address: entry.address, status: 'active' },
+        { $set: { session_multiplier: entry.multiplier } }
+      );
+    }
   }
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);

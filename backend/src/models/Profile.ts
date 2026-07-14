@@ -12,7 +12,7 @@ export interface IProfile extends Document {
   last_seen_at: string | null;
   // Admin overrides (set via File Z). Persist across sync cycles.
   // credit_override: delta added to auto-computed total_credits (can be negative).
-  // multiplier_override: replaces auto-computed multiplier when set.
+  // multiplier_override: delta added to auto-computed multiplier (e.g. +0.5 means 1.005 → 1.505).
   credit_override: number | null;
   multiplier_override: number | null;
 }
