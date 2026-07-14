@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { Stake } from '../models/Stake';
 import { StakeSummary } from '../models/StakeSummary';
+import { Profile } from '../models/Profile';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { getOwnedObjects, getNftMetadata, extractImageUrl, extractNftName } from '../services/sui';
 import {
@@ -40,6 +41,27 @@ function checkSyncRateLimit(address: string): boolean {
 
 function setSyncRateLimit(address: string): void {
   syncRateLimitMap.set(address, Date.now());
+}
+
+/**
+ * Apply admin overrides from Profile to multiplier and total_lore_points.
+ * Mirrors the same logic in rebuildRankingSnapshot so the ID Card always
+ * shows the same values as the Waiting List.
+ */
+async function applyAdminOverrides(
+  address: string,
+  stats: { holding_multiplier: number; total_lore_points: number }
+): Promise<void> {
+  const profile = await Profile.findOne({ address }, 'credit_override multiplier_override').lean();
+  if (!profile) return;
+
+  if (typeof profile.multiplier_override === 'number' && profile.multiplier_override > 0) {
+    stats.holding_multiplier = profile.multiplier_override;
+  }
+
+  if (typeof profile.credit_override === 'number') {
+    stats.total_lore_points = Math.max(0, stats.total_lore_points + profile.credit_override);
+  }
 }
 
 /**
@@ -194,6 +216,8 @@ router.get('/cached', authMiddleware, async (req: AuthRequest, res: Response) =>
     const last_synced = lastSyncedTimestamps.length > 0 ? lastSyncedTimestamps[0] : null;
 
     const stats = buildStatsFromPositions(positions, [], nftCount, holdingMultiplier);
+    // Apply admin overrides so ID Card matches Waiting List
+    await applyAdminOverrides(address, stats);
     res.json({
       ...stats,
       synced: hasEverSynced,
@@ -259,6 +283,8 @@ router.post('/sync', authMiddleware, async (req: AuthRequest, res: Response) => 
     );
 
     const stats = buildStatsFromPositions(positions, sellAlerts, nftCount, holdingMultiplier);
+    // Apply admin overrides so ID Card matches Waiting List
+    await applyAdminOverrides(address, stats);
     const lastSyncedTimestamps = freshStakes
       .map(s => s.last_synced)
       .filter(Boolean)
@@ -294,6 +320,8 @@ router.get('/positions', authMiddleware, async (req: AuthRequest, res: Response)
         buildPositionFromStake(s as unknown as import('../models/Stake').IStake, holdingMultiplier, ownedSet)
       );
       const stats = buildStatsFromPositions(positions, [], nftCount, holdingMultiplier);
+      // Apply admin overrides so ID Card matches Waiting List
+      await applyAdminOverrides(address, stats);
       const lastSyncedTimestamps = stakes
         .map(s => s.last_synced)
         .filter(Boolean)
@@ -346,6 +374,8 @@ router.get('/positions', authMiddleware, async (req: AuthRequest, res: Response)
     );
 
     const stats = buildStatsFromPositions(positions, sellAlerts, nftCount, holdingMultiplier);
+    // Apply admin overrides so ID Card matches Waiting List
+    await applyAdminOverrides(address, stats);
     const lastSyncedTimestamps = freshStakes
       .map(s => s.last_synced)
       .filter(Boolean)
