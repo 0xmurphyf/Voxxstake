@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import cors from 'cors';
 import helmet from 'helmet';
+import { createProxyMiddleware } from 'http-proxy-middleware';
 import { config } from './config';
 import { connectDB } from './db';
 import authRouter from './routes/auth';
@@ -99,6 +100,26 @@ async function main() {
   apiRouter.use('/root', rootRouter);
 
   app.use('/api', apiRouter);
+
+  // ─── Tale01 reverse proxy ──────────────────────────────────────
+  // Forwards /tale01 → Tale01 service on Railway private network.
+  // Only activates when TALE01_TARGET env var is set (e.g. http://tale01.railway.internal:8080).
+  const tale01Target = process.env.TALE01_TARGET;
+  if (tale01Target) {
+    console.log(`[tale01] Reverse proxy active → ${tale01Target}`);
+    app.use('/tale01', createProxyMiddleware({
+      target: tale01Target,
+      changeOrigin: true,
+      pathRewrite: { '^/tale01': '' }, // strip /tale01 prefix before forwarding
+      on: {
+        proxyReq: (proxyReq) => {
+          proxyReq.setHeader('X-Forwarded-Host', 'voxx.up.railway.app');
+        },
+      },
+    }));
+  } else {
+    console.log('[tale01] Reverse proxy disabled (TALE01_TARGET not set)');
+  }
 
   // Serve frontend static files
   const frontendBuild = path.resolve(__dirname, '../../frontend/build');
