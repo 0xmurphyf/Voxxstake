@@ -99,18 +99,26 @@ async function main() {
   apiRouter.use('/balance', balanceRouter);
   apiRouter.use('/root', rootRouter);
 
-  app.use('/api', apiRouter);
-
   // ─── Tale01 reverse proxy ──────────────────────────────────────
-  // Forwards /tale01 → Tale01 service on Railway private network.
-  // Only activates when TALE01_TARGET env var is set (e.g. http://tale01.railway.internal:8080).
+  // /api/verify MUST be intercepted BEFORE app.use('/api', apiRouter)
+  // because the Tale01 gate page calls fetch('/api/verify') from the same origin.
+  // Also forwards /tale01/* → Tale01 for the static HTML/JS/assets.
+  // Only activates when TALE01_TARGET env var is set.
   const tale01Target = process.env.TALE01_TARGET;
   if (tale01Target) {
     console.log(`[tale01] Reverse proxy active → ${tale01Target}`);
+
+    // Intercept /api/verify before voxx's own /api router
+    app.use('/api/verify', createProxyMiddleware({
+      target: tale01Target,
+      changeOrigin: true,
+    }));
+
+    // Forward all /tale01/* paths to Tale01 service
     app.use('/tale01', createProxyMiddleware({
       target: tale01Target,
       changeOrigin: true,
-      pathRewrite: { '^/tale01': '' }, // strip /tale01 prefix before forwarding
+      pathRewrite: { '^/tale01': '' },
       on: {
         proxyReq: (proxyReq) => {
           proxyReq.setHeader('X-Forwarded-Host', 'voxx.up.railway.app');
@@ -120,6 +128,8 @@ async function main() {
   } else {
     console.log('[tale01] Reverse proxy disabled (TALE01_TARGET not set)');
   }
+
+  app.use('/api', apiRouter);
 
   // Serve frontend static files
   const frontendBuild = path.resolve(__dirname, '../../frontend/build');
