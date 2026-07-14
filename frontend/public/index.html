@@ -1061,8 +1061,25 @@
             </div>
             <div class="modal-buttons" style="margin-top:16px;">
                 <button class="modal-btn" id="adjust-apply" onclick="applyAdjust()">APPLY</button>
-                <button class="modal-btn" id="adjust-clear" onclick="applyAdjust(true)" style="background:rgba(255,80,80,0.15);border-color:rgba(255,80,80,0.4);color:#f66;">CLEAR OVERRIDE</button>
+                <button class="modal-btn" id="adjust-clear" onclick="applyAdjust(true)" style="background:rgba(255,180,50,0.15);border-color:rgba(255,180,50,0.4);color:#fa0;">REMOVE OVERRIDE</button>
                 <button class="modal-btn no-btn" onclick="closeAdjustModal()">CANCEL</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="delete-modal" role="dialog" aria-modal="true" aria-labelledby="delete-modal-title">
+        <div class="modal-box root-modal-box" style="max-width:420px;">
+            <h3 id="delete-modal-title" style="color:#f55;">DELETE USER</h3>
+            <p class="root-hint" id="delete-addr" style="margin-bottom:8px;"></p>
+            <p style="color:rgba(255,80,80,0.8);font-size:0.8rem;margin-bottom:12px;">
+                ⚠ This will permanently delete ALL records for this address:<br/>
+                Profile, Stakes, StakeSummary, RankingSnapshot, Nonces.<br/>
+                This action is IRREVERSIBLE.
+            </p>
+            <div id="delete-result" style="font-size:0.75rem;min-height:1.2em;margin-bottom:8px;"></div>
+            <div class="modal-buttons">
+                <button class="modal-btn" id="delete-confirm" onclick="deleteUser()" style="background:rgba(255,50,50,0.2);border-color:rgba(255,50,50,0.5);color:#f55;">DELETE</button>
+                <button class="modal-btn no-btn" onclick="closeDeleteModal()">CANCEL</button>
             </div>
         </div>
     </div>
@@ -1748,6 +1765,7 @@
                         (row.credit_override != null || row.multiplier_override != null
                             ? ' <span style="color:#ff0;font-size:0.65rem;" title="Has manual override">⚡</span>'
                             : '') +
+                        ' <button class="fz-adj-btn" style="background:rgba(255,50,50,0.08);border-color:rgba(255,50,50,0.3);color:#f55;" onclick="confirmDeleteUser(\'' + addr + '\')" title="Delete user and all records">🗑</button>' +
                         '</td>';
                 }
                 html += '</tr>';
@@ -1938,7 +1956,65 @@
         // Close adjust modal on overlay click
         document.addEventListener('click', (e) => {
             if (e.target.id === 'adjust-modal') closeAdjustModal();
+            if (e.target.id === 'delete-modal') closeDeleteModal();
         });
+
+        // ─── Delete user ───
+        let deleteAddress = null;
+
+        function confirmDeleteUser(address) {
+            deleteAddress = address;
+            document.getElementById('delete-addr').textContent = address;
+            document.getElementById('delete-result').textContent = '';
+            document.getElementById('delete-confirm').disabled = false;
+            document.getElementById('delete-confirm').textContent = 'DELETE';
+            document.getElementById('delete-modal').classList.add('active');
+        }
+
+        function closeDeleteModal() {
+            document.getElementById('delete-modal').classList.remove('active');
+            deleteAddress = null;
+        }
+
+        async function deleteUser() {
+            if (!rootToken || !deleteAddress) return;
+            const resultEl = document.getElementById('delete-result');
+            const confirmBtn = document.getElementById('delete-confirm');
+
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = 'DELETING…';
+            try {
+                const r = await fetch('/api/root/delete-user', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: 'Bearer ' + rootToken,
+                    },
+                    body: JSON.stringify({ address: deleteAddress }),
+                });
+                const data = await r.json().catch(() => ({}));
+                if (r.status === 401 || r.status === 403) {
+                    lockFileZ();
+                    closeDeleteModal();
+                    return;
+                }
+                if (r.ok) {
+                    resultEl.textContent = '✓ Deleted ' + data.total + ' records: ' + (data.deleted || []).join(', ');
+                    resultEl.style.color = '#0f0';
+                    setTimeout(() => { closeDeleteModal(); queryFileZ(); }, 2000);
+                } else {
+                    resultEl.textContent = '✗ ' + (data.detail || 'Failed');
+                    resultEl.style.color = '#f55';
+                    confirmBtn.disabled = false;
+                    confirmBtn.textContent = 'DELETE';
+                }
+            } catch (e) {
+                resultEl.textContent = '✗ Network error';
+                resultEl.style.color = '#f55';
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = 'DELETE';
+            }
+        }
 
         const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 

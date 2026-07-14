@@ -405,6 +405,57 @@ router.post('/adjust-credit', async (req: Request, res: Response) => {
   }
 });
 
+// ─── POST /api/root/delete-user ─────────────────────────────────
+// Delete a user and ALL their records from the database. Requires root JWT.
+// This is irreversible — use with caution.
+// Body: { address }
+router.post('/delete-user', async (req: Request, res: Response) => {
+  if (!requireRoot(req, res)) return;
+
+  const { address } = req.body || {};
+  if (!address || typeof address !== 'string') {
+    safeJson(res, 400, { detail: 'address is required' });
+    return;
+  }
+
+  const addr = address.toLowerCase();
+
+  try {
+    const results: string[] = [];
+
+    // Delete from all collections
+    const profileDel = await Profile.deleteOne({ address: addr });
+    if (profileDel.deletedCount > 0) results.push(`Profile: ${profileDel.deletedCount}`);
+
+    const stakesDel = await Stake.deleteMany({ address: addr });
+    if (stakesDel.deletedCount > 0) results.push(`Stakes: ${stakesDel.deletedCount}`);
+
+    const summaryDel = await StakeSummary.deleteOne({ address: addr });
+    if (summaryDel.deletedCount > 0) results.push(`StakeSummary: ${summaryDel.deletedCount}`);
+
+    const rankingDel = await RankingSnapshot.deleteOne({ address: addr });
+    if (rankingDel.deletedCount > 0) results.push(`RankingSnapshot: ${rankingDel.deletedCount}`);
+
+    const nonceDel = await Nonce.deleteMany({ address: addr });
+    if (nonceDel.deletedCount > 0) results.push(`Nonces: ${nonceDel.deletedCount}`);
+
+    const totalDeleted = profileDel.deletedCount + stakesDel.deletedCount +
+      summaryDel.deletedCount + rankingDel.deletedCount + nonceDel.deletedCount;
+
+    console.log(`[root] Deleted user ${addr}: ${results.join(', ') || 'nothing to delete'}`);
+
+    safeJson(res, 200, {
+      ok: true,
+      address: addr,
+      deleted: results,
+      total: totalDeleted,
+    });
+  } catch (err) {
+    console.error('Root delete-user error:', err);
+    safeJson(res, 500, { detail: 'Delete failed' });
+  }
+});
+
 export default router;
 
 // Startup diagnostic — logs only the configured clearance-code LENGTH (never
