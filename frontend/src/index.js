@@ -8,7 +8,7 @@ import { registerSlushWallet } from '@mysten/slush-wallet';
 import '@suiet/wallet-kit/style.css';
 
 // Register the Slush web wallet (zkLogin enabled)
-registerSlushWallet('GVOXX Lore Stake');
+registerSlushWallet('VOXX Terminal');
 
 // Whitelist: only show Slush, Phantom, Binance, and OKX
 const ALLOWED_NAMES = ['Slush — A Sui wallet', 'Phantom', 'OKX Wallet', 'Binance Web3 Wallet'];
