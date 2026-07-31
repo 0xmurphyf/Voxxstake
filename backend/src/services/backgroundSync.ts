@@ -3,11 +3,12 @@ import { StakeSummary } from '../models/StakeSummary';
 import { RankingSnapshot } from '../models/RankingSnapshot';
 import { Profile } from '../models/Profile';
 import { getOwnedObjects, extractImageUrl, extractNftName } from './sui';
-import { VOXX_TYPE, POINTS_PER_NFT_PER_HOUR } from '../types';
+import { VOXX_TYPE } from '../types';
 import { getHoldingMultiplier, computeTotalActiveSeconds, computePoints } from './staking';
 import { IStake } from '../models/Stake';
 import { config } from '../config';
 import { withMutex } from './mutex';
+import { reconcileOwnedStakes } from './ownershipSync';
 
 /**
  * Background sync: periodically scans all registered addresses' NFTs
@@ -77,7 +78,7 @@ async function runSyncAddresses(requestedAddresses?: string[]): Promise<SyncRepo
       try {
         // Wrap in a per-address timeout so a single hung address (e.g. RPC
         // stall that outlives the mutex timeout) doesn't block the entire loop.
-        // The mutex (90s timeout) is the first line of defense; this 120s
+        // The mutex (300s timeout) is the first line of defense; this 330s
         // outer timeout is the safety net.
         const perAddrTimeout = new Promise<never>((_, reject) => {
           perAddrTimer = setTimeout(
@@ -96,118 +97,31 @@ async function runSyncAddresses(requestedAddresses?: string[]): Promise<SyncRepo
         if (kioskError) {
           throw new Error(`Kiosk scan incomplete: ${kioskErrorMessage || 'unknown RPC error'}`);
         }
-        const ownedSet = new Set<string>();
         const ownedMeta = new Map<string, { name: string; image_url: string | null }>();
 
         for (const nft of ownedNfts) {
           const data = (nft as Record<string, unknown>).data as Record<string, unknown>;
           const objId = data?.objectId as string;
           if (!objId) continue;
-          ownedSet.add(objId);
-
           ownedMeta.set(objId, {
             name: extractNftName(data, objId),
             image_url: extractImageUrl(data),
           });
         }
 
-        const now = new Date();
-        const nowIso = now.toISOString();
-
-        // Get existing stakes for ALL NFTs this address currently owns,
-        // including any that may have been transferred from another address.
-        // Using { object_id: { $in: [...] } } instead of { address } ensures
-        // we find stakes that were created under a previous owner.
-        const ownedIds = [...ownedSet];
-        const existingStakes = ownedIds.length > 0
-          ? await Stake.find({ object_id: { $in: ownedIds } })
-          : [];
-        const existingMap = new Map(existingStakes.map((s) => [s.object_id, s]));
-
-        const currentNftCount = ownedSet.size;
-        const currentMultiplier = getHoldingMultiplier(currentNftCount);
-
-        // Activate owned NFTs
-        for (const [objId, meta] of ownedMeta) {
-          const existing = existingMap.get(objId);
-          if (existing) {
-            // Always update address — NFT may have transferred from another wallet.
-            existing.address = address;
-            if (existing.status === 'paused') {
-              existing.status = 'active';
-              existing.current_session_start = nowIso;
-              existing.session_multiplier = currentMultiplier;
-            } else {
-              // Only ever increase the frozen session multiplier.
-              const prevMult =
-                typeof existing.session_multiplier === 'number' && existing.session_multiplier > 0
-                  ? existing.session_multiplier
-                  : 1.0;
-              if (prevMult < currentMultiplier) existing.session_multiplier = currentMultiplier;
-            }
-            existing.name = meta.name;
-            existing.image_url = meta.image_url;
-            existing.last_synced = nowIso;
-            await existing.save();
-          } else {
-            // NFT may have transferred from another address — use upsert to
-            // atomically claim it (or update if this address already owns it).
-            // This avoids E11000 duplicate key errors on object_id when the
-            // same NFT moves between wallets.
-            await Stake.findOneAndUpdate(
-              { object_id: objId },
-              {
-                $set: {
-                  address,
-                  name: meta.name,
-                  image_url: meta.image_url,
-                  total_staked_seconds: 0.0,
-                  current_session_start: nowIso,
-                  status: 'active',
-                  session_multiplier: currentMultiplier,
-                  last_synced: nowIso,
-                },
-                $setOnInsert: { created_at: nowIso, locked_points: 0.0 },
-              },
-              { upsert: true, new: true }
-            );
-          }
-        }
-
-        // This point is reached only after a complete direct + Kiosk scan, so
-        // missing objects can safely be paused.
-        // Query stakes that belong to THIS address but are no longer owned.
-        const addressStakes = await Stake.find({ address });
-        for (const stake of addressStakes) {
-          if (!ownedSet.has(stake.object_id) && stake.status === 'active') {
-            let sessionSeconds = 0.0;
-            if (stake.current_session_start) {
-              const sessionStart = new Date(stake.current_session_start);
-              sessionSeconds = Math.max(0.0, (now.getTime() - sessionStart.getTime()) / 1000);
-            }
-            // Lock current session's points at the FROZEN session multiplier
-            const lockMult =
-              typeof stake.session_multiplier === 'number' && stake.session_multiplier > 0
-                ? stake.session_multiplier
-                : currentMultiplier;
-            const sessionHours = sessionSeconds / 3600;
-            const sessionPoints = Math.round(sessionHours * POINTS_PER_NFT_PER_HOUR * lockMult);
-            stake.locked_points = (stake.locked_points || 0) + sessionPoints;
-            stake.status = 'paused';
-            stake.current_session_start = null;
-            stake.total_staked_seconds = (stake.total_staked_seconds || 0.0) + sessionSeconds;
-            stake.last_synced = nowIso;
-            await stake.save();
-          }
-        }
+        const { nftCount } = await reconcileOwnedStakes({
+          address,
+          ownedMap: ownedMeta,
+          scanComplete: true,
+        });
 
         await StakeSummary.findOneAndUpdate(
           { address },
-          { $set: { nft_count: ownedSet.size, last_synced: new Date() } },
+          { $set: { nft_count: nftCount, last_synced: new Date() } },
           { upsert: true }
         );
 
-        return { address, nft_count: ownedSet.size };
+        return { address, nft_count: nftCount };
           }, mutexTimeoutMs), // withMutex
           perAddrTimeout,
         ]);

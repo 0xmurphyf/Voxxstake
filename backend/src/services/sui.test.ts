@@ -4,6 +4,7 @@ import {
   collectKioskIdsFromTrustedCaps,
   collectKioskDynamicFields,
   extractKioskIdFromTrustedCap,
+  mapWithConcurrency,
 } from './sui';
 
 const MAINNET_PERSONAL_KIOSK_CAP =
@@ -132,4 +133,19 @@ test('does not accept lookalike Listing types from another package', () => {
   );
 
   assert.equal(listedNftIds.size, 0);
+});
+
+test('bounds concurrent Kiosk work and preserves result order', async () => {
+  let active = 0;
+  let peak = 0;
+  const results = await mapWithConcurrency([1, 2, 3, 4, 5], 2, async (value) => {
+    active += 1;
+    peak = Math.max(peak, active);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    active -= 1;
+    return value * 10;
+  });
+
+  assert.equal(peak, 2);
+  assert.deepEqual(results, [10, 20, 30, 40, 50]);
 });

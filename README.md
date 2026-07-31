@@ -91,7 +91,9 @@ yarn start
 | `SUI_GRPC_URL` | `https://fullnode.mainnet.sui.io:443` | Primary Sui gRPC endpoint. Use a managed provider in production. |
 | `SUI_GRPC_FAILOVER` | (none) | Optional comma-separated gRPC failover endpoints |
 | `SUI_GRPC_TIMEOUT_MS` | `15000` | Per-endpoint gRPC request timeout |
-| `SUI_GRAPHQL_URL` | `https://graphql.mainnet.sui.io/graphql` | GraphQL endpoint used only for zkLogin verification |
+| `SUI_GRPC_MAX_ATTEMPTS` | `3` | Attempts per endpoint for transient gRPC failures |
+| `SUI_KIOSK_CONCURRENCY` | `6` | Maximum number of Kiosks scanned concurrently |
+| `SUI_GRAPHQL_URL` | `https://graphql.mainnet.sui.io/graphql` | Final read fallback and zkLogin verification endpoint |
 | `JWT_SECRET` | (required) | Secret for JWT signing |
 
 For Railway production deployments, remove the retired `SUI_RPC_URL`,

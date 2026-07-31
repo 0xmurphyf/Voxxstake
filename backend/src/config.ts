@@ -50,8 +50,8 @@ export const config = {
     if (process.env.NODE_ENV === 'production') return []; // production: must be explicit
     return ['*'];
   })(),
-  // Sui data access. gRPC is the primary transport; GraphQL is only used for
-  // zkLogin signature verification, which needs the network's current JWKs.
+  // Sui data access. gRPC is primary; GraphQL is the final read fallback and
+  // also handles zkLogin signature verification.
   suiNetwork,
   suiGrpcUrl: process.env.SUI_GRPC_URL || defaultSuiGrpcUrl,
   suiGrpcFailoverUrls: (process.env.SUI_GRPC_FAILOVER || '')
@@ -59,6 +59,12 @@ export const config = {
     .map(s => s.trim())
     .filter(Boolean),
   suiGrpcTimeoutMs: parseInt(process.env.SUI_GRPC_TIMEOUT_MS || '15000', 10),
+  suiGrpcMaxAttempts: Math.min(5, Math.max(1,
+    parseInt(process.env.SUI_GRPC_MAX_ATTEMPTS || '3', 10) || 3
+  )),
+  suiKioskConcurrency: Math.min(16, Math.max(1,
+    parseInt(process.env.SUI_KIOSK_CONCURRENCY || '6', 10) || 6
+  )),
   suiGraphqlUrl: process.env.SUI_GRAPHQL_URL || defaultSuiGraphqlUrl,
   jwtSecret,
   // Admin addresses: comma-separated list of Sui addresses that can access /api/admin

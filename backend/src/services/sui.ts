@@ -1,5 +1,6 @@
 import { SuiGraphQLClient } from '@mysten/sui/graphql';
 import { SuiGrpcClient } from '@mysten/sui/grpc';
+import type { ClientWithCoreApi } from '@mysten/sui/client';
 import { verifyPersonalMessageSignature } from '@mysten/sui/verify';
 import { config } from '../config';
 import { VOXX_TYPE } from '../types';
@@ -12,6 +13,18 @@ const GRAPHQL_CLIENT = new SuiGraphQLClient({
   url: config.suiGraphqlUrl,
   network: config.suiNetwork,
 });
+const DATA_CLIENTS: Array<{
+  label: string;
+  client: ClientWithCoreApi;
+}> = [
+  ...GRPC_CLIENTS.map((client, index) => ({
+    label: `gRPC ${GRPC_URLS[index]}`,
+    client,
+  })),
+  { label: `GraphQL ${config.suiGraphqlUrl}`, client: GRAPHQL_CLIENT },
+];
+const grpcDisabledUntil = new Map<number, number>();
+const GRPC_FAILURE_COOLDOWN_MS = 60_000;
 
 type ObjectData = Record<string, unknown>;
 type ObjectWrapper = { data: ObjectData };
@@ -20,42 +33,77 @@ function fromBase64(value: string): Uint8Array {
   return Uint8Array.from(Buffer.from(value, 'base64'));
 }
 
-async function withGrpcFailover<T>(
-  operation: (client: SuiGrpcClient, signal: AbortSignal) => Promise<T>
+async function withDataFailover<T>(
+  operation: (client: ClientWithCoreApi, signal: AbortSignal) => Promise<T>
 ): Promise<T> {
   let lastError: Error | null = null;
 
-  for (let index = 0; index < GRPC_CLIENTS.length; index += 1) {
-    const controller = new AbortController();
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    try {
-      const timeout = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => {
-          controller.abort();
-          reject(
-            new Error(
-              `Sui gRPC timeout after ${config.suiGrpcTimeoutMs}ms: ${GRPC_URLS[index]}`
-            )
-          );
-        }, config.suiGrpcTimeoutMs);
-      });
-      return await Promise.race([
-        operation(GRPC_CLIENTS[index], controller.signal),
-        timeout,
-      ]);
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-      console.warn(
-        `[Sui gRPC] ${GRPC_URLS[index]} failed` +
-          (index + 1 < GRPC_CLIENTS.length ? '; trying failover' : ''),
-        lastError.message
-      );
-    } finally {
-      if (timeoutId) clearTimeout(timeoutId);
+  for (let index = 0; index < DATA_CLIENTS.length; index += 1) {
+    if ((grpcDisabledUntil.get(index) || 0) > Date.now()) continue;
+    const endpoint = DATA_CLIENTS[index];
+    for (let attempt = 1; attempt <= config.suiGrpcMaxAttempts; attempt += 1) {
+      const controller = new AbortController();
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const timeout = new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => {
+            controller.abort();
+            reject(
+              new Error(
+                `Sui data timeout after ${config.suiGrpcTimeoutMs}ms: ${endpoint.label}`
+              )
+            );
+          }, config.suiGrpcTimeoutMs);
+        });
+        const result = await Promise.race([
+          operation(endpoint.client, controller.signal),
+          timeout,
+        ]);
+        grpcDisabledUntil.delete(index);
+        return result;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        const retrying = attempt < config.suiGrpcMaxAttempts;
+        console.warn(
+          `[Sui data] ${endpoint.label} attempt ${attempt}/${config.suiGrpcMaxAttempts} failed` +
+            (retrying ? '; retrying' : index + 1 < DATA_CLIENTS.length ? '; trying failover' : ''),
+          lastError.message
+        );
+        if (retrying) {
+          await new Promise((resolve) => setTimeout(resolve, Math.min(250 * 2 ** (attempt - 1), 2_000)));
+        }
+      } finally {
+        if (timeoutId) clearTimeout(timeoutId);
+      }
+    }
+    if (index < GRPC_CLIENTS.length) {
+      grpcDisabledUntil.set(index, Date.now() + GRPC_FAILURE_COOLDOWN_MS);
     }
   }
 
-  throw lastError || new Error('All Sui gRPC endpoints failed');
+  throw lastError || new Error('All Sui data endpoints failed');
+}
+
+export async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  if (items.length === 0) return [];
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+
+  async function runWorker(): Promise<void> {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await worker(items[index], index);
+    }
+  }
+
+  const workerCount = Math.min(Math.max(1, concurrency), items.length);
+  await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+  return results;
 }
 
 /**
@@ -128,7 +176,7 @@ export function extractNftName(
 }
 
 export async function getObject(objectId: string): Promise<Record<string, unknown>> {
-  const { object } = await withGrpcFailover((client, signal) =>
+  const { object } = await withDataFailover((client, signal) =>
     client.core.getObject({
       objectId,
       include: { json: true, display: true },
@@ -170,7 +218,7 @@ async function getDirectlyOwnedObjects(
   let cursor: string | null = null;
 
   while (true) {
-    const result = await withGrpcFailover((client, signal) =>
+    const result = await withDataFailover((client, signal) =>
       client.core.listOwnedObjects({
         owner: address,
         type: typeFilter,
@@ -283,7 +331,6 @@ async function getKioskOwnedObjects(
   address: string,
   typeFilter: string
 ): Promise<Record<string, unknown>[]> {
-  const allObjects: Record<string, unknown>[] = [];
   const allCaps: Record<string, unknown>[] = [];
 
   for (const capType of TRUSTED_KIOSK_CAP_TYPES) {
@@ -293,14 +340,18 @@ async function getKioskOwnedObjects(
 
   const kioskIds = collectKioskIdsFromTrustedCaps(allCaps);
 
-  for (const kioskId of kioskIds) {
+  const kioskObjects = await mapWithConcurrency(
+    [...kioskIds],
+    config.suiKioskConcurrency,
+    async (kioskId) => {
+    const objects: Record<string, unknown>[] = [];
     const itemIds = new Set<string>();
     const listedNftIds = new Set<string>();
     let cursor: string | null = null;
 
     while (true) {
-      const result = await withGrpcFailover((client, signal) =>
-        client.listDynamicFields({
+      const result = await withDataFailover((client, signal) =>
+        client.core.listDynamicFields({
           parentId: kioskId,
           cursor: cursor || undefined,
           signal,
@@ -317,7 +368,7 @@ async function getKioskOwnedObjects(
 
     for (let offset = 0; offset < unlistedItemIds.length; offset += chunkSize) {
       const objectIds = unlistedItemIds.slice(offset, offset + chunkSize);
-      const result = await withGrpcFailover((client, signal) =>
+      const result = await withDataFailover((client, signal) =>
         client.core.getObjects({
           objectIds,
           include: { json: true, display: true },
@@ -327,14 +378,15 @@ async function getKioskOwnedObjects(
 
       for (const object of result.objects) {
         if (object instanceof Error || object.type !== typeFilter) continue;
-        allObjects.push(
+        objects.push(
           wrapGrpcObject(object as unknown as Record<string, unknown>)
         );
       }
     }
-  }
+    return objects;
+  });
 
-  return allObjects;
+  return kioskObjects.flat();
 }
 
 export async function getOwnedObjects(
@@ -379,7 +431,7 @@ export async function getOwnedObjects(
 }
 
 export async function getSuiBalance(address: string): Promise<string> {
-  const { balance } = await withGrpcFailover((client, signal) =>
+  const { balance } = await withDataFailover((client, signal) =>
     client.core.getBalance({ owner: address, signal })
   );
   return balance.balance;
