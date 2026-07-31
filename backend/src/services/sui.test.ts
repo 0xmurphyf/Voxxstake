@@ -30,7 +30,7 @@ test('extracts standard and allowlisted Personal Kiosk IDs', () => {
     data: {
       type: MAINNET_PERSONAL_KIOSK_CAP,
       content: {
-        fields: { cap: { fields: { for: '0xpersonal-kiosk' } } },
+        fields: { cap: { for: '0xpersonal-kiosk' } },
       },
     },
   };
@@ -42,23 +42,28 @@ test('extracts standard and allowlisted Personal Kiosk IDs', () => {
 test('keeps Listing state across separate dynamic-field pages', () => {
   const itemIds = new Set<string>();
   const listedNftIds = new Set<string>();
+  const nftId = `0x${'ab'.repeat(32)}`;
+  const listingBcs = Uint8Array.from([
+    ...Buffer.from(nftId.slice(2), 'hex'),
+    0,
+  ]);
 
   collectKioskDynamicFields(
-    [{ type: 'DynamicObject', objectId: '0xnft' }],
+    [{ $kind: 'DynamicObject', childId: nftId }],
     itemIds,
     listedNftIds
   );
   collectKioskDynamicFields(
     [{
-      type: 'DynamicField',
-      name: { type: '0x2::kiosk::Listing', value: { id: '0xnft' } },
+      $kind: 'DynamicField',
+      name: { type: '0x2::kiosk::Listing', bcs: listingBcs },
     }],
     itemIds,
     listedNftIds
   );
 
-  assert.deepEqual([...itemIds], ['0xnft']);
-  assert.equal(listedNftIds.has('0xnft'), true);
+  assert.deepEqual([...itemIds], [nftId]);
+  assert.equal(listedNftIds.has(nftId), true);
   assert.deepEqual([...itemIds].filter((id) => !listedNftIds.has(id)), []);
 });
 
@@ -68,8 +73,11 @@ test('does not accept lookalike Listing types from another package', () => {
 
   collectKioskDynamicFields(
     [{
-      type: 'DynamicField',
-      name: { type: '0xdead::kiosk::Listing', value: { id: '0xnft' } },
+      $kind: 'DynamicField',
+      name: {
+        type: '0xdead::kiosk::Listing',
+        bcs: Uint8Array.from(Buffer.from('ab'.repeat(32), 'hex')),
+      },
     }],
     itemIds,
     listedNftIds

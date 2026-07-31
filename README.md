@@ -87,8 +87,19 @@ yarn start
 | `MONGO_URL` | `mongodb://localhost:27017` | MongoDB connection string |
 | `DB_NAME` | `voxxstake` | Database name |
 | `CORS_ORIGINS` | (none → dev `*`, prod `[]`) | Allowed CORS origins (comma-separated). **Production: if unset, CORS is fully disabled (`origin:false`), not `*`.** Set explicitly in prod. |
-| `SUI_RPC_URL` | `https://fullnode.devnet.sui.io:443` | Sui RPC endpoint |
+| `SUI_NETWORK` | `mainnet` | Sui network (`mainnet`, `testnet`, `devnet`, or `localnet`) |
+| `SUI_GRPC_URL` | `https://fullnode.mainnet.sui.io:443` | Primary Sui gRPC endpoint. Use a managed provider in production. |
+| `SUI_GRPC_FAILOVER` | (none) | Optional comma-separated gRPC failover endpoints |
+| `SUI_GRPC_TIMEOUT_MS` | `15000` | Per-endpoint gRPC request timeout |
+| `SUI_GRAPHQL_URL` | `https://graphql.mainnet.sui.io/graphql` | GraphQL endpoint used only for zkLogin verification |
 | `JWT_SECRET` | (required) | Secret for JWT signing |
+
+For Railway production deployments, remove the retired `SUI_RPC_URL`,
+`SUI_RPC_FAILOVER`, and `SUI_RPC_TIMEOUT_MS` variables. Set `SUI_GRPC_URL` to
+a managed provider's **gRPC** endpoint (plus `SUI_GRPC_FAILOVER` when available)
+and keep all provider credentials on the backend. Do not add these URLs or keys
+to `REACT_APP_*` variables. The Foundation defaults are suitable for local
+development but are rate-limited.
 
 **Frontend** (`frontend/.env`):
 
@@ -103,7 +114,7 @@ yarn start
 - `POST /api/auth/verify` — Verify signature and get JWT
 
 ### Staking
-- `GET /api/staking/cached` — Fast DB-only read (no RPC)
+- `GET /api/staking/cached` — Fast DB-only read (no chain request)
 - `POST /api/staking/sync` — Full on-chain sync
 - `GET /api/staking/positions` — Alias for sync
 - `GET /api/staking/nft/:objectId` — NFT detail with metadata

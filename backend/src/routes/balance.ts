@@ -7,7 +7,7 @@ const router = Router();
  * GET /api/balance/:address
  *
  * Returns the SUI balance for the given address.
- * Uses sui_getBalance (non-indexed RPC, still works on public fullnodes).
+ * Uses the Sui gRPC Core API.
  *
  * Auth required — prevents abuse of backend RPC resources.
  */
@@ -21,14 +21,8 @@ router.get('/:address', authMiddleware, async (req: AuthRequest, res: Response) 
       return;
     }
 
-    // Dynamically import rpcCall to avoid circular deps
-    const { rpcCall } = await import('../services/sui');
-
-    const result = (await rpcCall('sui_getBalance', [address])) as {
-      totalBalance?: string;
-    } | null;
-
-    const mist = result?.totalBalance || '0';
+    const { getSuiBalance } = await import('../services/sui');
+    const mist = await getSuiBalance(address);
     const balance = (parseInt(mist, 10) / 1e9).toFixed(4);
 
     res.json({

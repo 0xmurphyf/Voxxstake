@@ -29,6 +29,15 @@ async function main() {
       'Set NODE_ENV=production on the deployed service.'
     );
   }
+  if (
+    process.env.NODE_ENV === 'production' &&
+    /^https:\/\/fullnode\.(mainnet|testnet|devnet)\.sui\.io/.test(config.suiGrpcUrl)
+  ) {
+    console.warn(
+      '⚠️  SUI_GRPC_URL uses a rate-limited Foundation endpoint. ' +
+      'Configure a production gRPC provider and SUI_GRPC_FAILOVER on Railway.'
+    );
+  }
 
   const app = express();
 
@@ -81,7 +90,9 @@ async function main() {
       return;
     }
     res.json({
-      suiRpcUrl: config.suiRpcUrl,
+      suiNetwork: config.suiNetwork,
+      suiGrpcUrl: config.suiGrpcUrl,
+      suiGraphqlUrl: config.suiGraphqlUrl,
       port: config.port,
       mongoDb: config.dbName,
       corsOrigins: config.corsOrigins,

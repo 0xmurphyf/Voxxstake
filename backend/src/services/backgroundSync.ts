@@ -233,7 +233,7 @@ async function runSyncAddresses(requestedAddresses?: string[]): Promise<SyncRepo
     console.log(`[BG Sync] Done: ${updated} updated, ${errors} errors in ${elapsed}s`);
 
     // Rebuild ranking snapshot after sync completes. This is a fast DB-only
-    // operation (no RPC) that precomputes the data the /api/ranking endpoint
+    // operation (no chain request) that precomputes the data the /api/ranking endpoint
     // needs, so it never has to full-table-scan on every request.
     try {
       await rebuildRankingSnapshot();

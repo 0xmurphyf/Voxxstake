@@ -21,6 +21,23 @@ if (rawJwtSecret) {
   console.warn('⚠️  JWT_SECRET not set — using an ephemeral dev-only secret. Set JWT_SECRET for production deployments.');
 }
 
+const suiNetwork = (() => {
+  const network = process.env.SUI_NETWORK || 'mainnet';
+  if (!['mainnet', 'testnet', 'devnet', 'localnet'].includes(network)) {
+    throw new Error(`Invalid SUI_NETWORK: ${network}`);
+  }
+  return network as 'mainnet' | 'testnet' | 'devnet' | 'localnet';
+})();
+
+const defaultSuiGrpcUrl =
+  suiNetwork === 'localnet'
+    ? 'http://127.0.0.1:9000'
+    : `https://fullnode.${suiNetwork}.sui.io:443`;
+const defaultSuiGraphqlUrl =
+  suiNetwork === 'localnet'
+    ? 'http://127.0.0.1:9125/graphql'
+    : `https://graphql.${suiNetwork}.sui.io/graphql`;
+
 export const config = {
   port: parseInt(process.env.PORT || '8001', 10),
   mongoUrl: process.env.MONGO_URL || 'mongodb://localhost:27017',
@@ -33,13 +50,16 @@ export const config = {
     if (process.env.NODE_ENV === 'production') return []; // production: must be explicit
     return ['*'];
   })(),
-  // Sui RPC endpoints: primary + failover(s)
-  suiRpcUrl: process.env.SUI_RPC_URL || 'https://fullnode.mainnet.sui.io:443',
-  suiRpcFailoverUrls: (process.env.SUI_RPC_FAILOVER || '')
+  // Sui data access. gRPC is the primary transport; GraphQL is only used for
+  // zkLogin signature verification, which needs the network's current JWKs.
+  suiNetwork,
+  suiGrpcUrl: process.env.SUI_GRPC_URL || defaultSuiGrpcUrl,
+  suiGrpcFailoverUrls: (process.env.SUI_GRPC_FAILOVER || '')
     .split(',')
     .map(s => s.trim())
     .filter(Boolean),
-  suiRpcTimeoutMs: parseInt(process.env.SUI_RPC_TIMEOUT_MS || '15000', 10),
+  suiGrpcTimeoutMs: parseInt(process.env.SUI_GRPC_TIMEOUT_MS || '15000', 10),
+  suiGraphqlUrl: process.env.SUI_GRAPHQL_URL || defaultSuiGraphqlUrl,
   jwtSecret,
   // Admin addresses: comma-separated list of Sui addresses that can access /api/admin
   adminAddresses: (process.env.ADMIN_ADDRESSES || '')
