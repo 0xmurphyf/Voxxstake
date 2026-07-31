@@ -22,8 +22,8 @@ const SYNC_INTERVAL_MS =
 
 // Per-address timeout for background sync — prevents one stuck address from
 // blocking the entire loop (cascading failure). Must be longer than the mutex
-// timeout (90s) so the mutex has a chance to release first.
-const PER_ADDRESS_SYNC_TIMEOUT_MS = 120_000;
+// timeout (300s) so the mutex has a chance to release first.
+const PER_ADDRESS_SYNC_TIMEOUT_MS = 330_000;
 const TARGETED_MUTEX_TIMEOUT_MS = 300_000;
 const TARGETED_SYNC_TIMEOUT_MS = 330_000;
 

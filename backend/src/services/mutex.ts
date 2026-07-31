@@ -5,14 +5,14 @@
  * the same Sui address (both do find→modify→save and the second writer would
  * overwrite the first).
  *
- * Each critical section has a configurable timeout (default 90s). If `fn()`
+ * Each critical section has a configurable timeout (default 300s). If `fn()`
  * does not settle within that window, the CALLER receives a timeout error, but
  * the lock remains held until fn() actually finishes — preventing overlapping
  * critical sections. A subsequent caller will wait for the timed-out fn() to
  * settle before entering.
  */
 
-const DEFAULT_MUTEX_TIMEOUT_MS = 90_000;
+const DEFAULT_MUTEX_TIMEOUT_MS = 300_000;
 
 const locks = new Map<string, Promise<unknown>>();
 
