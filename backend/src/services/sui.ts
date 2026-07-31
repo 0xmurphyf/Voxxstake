@@ -196,14 +196,21 @@ async function getDirectlyOwnedObjects(
 const STANDARD_KIOSK_OWNER_CAP_TYPE = '0x2::kiosk::KioskOwnerCap';
 const KIOSK_LISTING_TYPE = '0x2::kiosk::Listing';
 
-const PERSONAL_KIOSK_CAP_TYPES = [
-  '0x0cb4bcc0560340eb1a1b929cabe56b33fc6449820ec8c1980d69bb98b649b802::personal_kiosk::PersonalKioskCap',
-  '0x06f6bdd3f2e2e759d8a4b9c252f379f7a05e72dfe4c0b9311cdac27b8eb791b1::personal_kiosk::PersonalKioskCap',
-] as const;
+const PERSONAL_KIOSK_CAP_TYPE_BY_NETWORK: Partial<
+  Record<typeof config.suiNetwork, string>
+> = {
+  mainnet:
+    '0x0cb4bcc0560340eb1a1b929cabe56b33fc6449820ec8c1980d69bb98b649b802::personal_kiosk::PersonalKioskCap',
+  testnet:
+    '0x06f6bdd3f2e2e759d8a4b9c252f379f7a05e72dfe4c0b9311cdac27b8eb791b1::personal_kiosk::PersonalKioskCap',
+};
+
+const activePersonalKioskCapType =
+  PERSONAL_KIOSK_CAP_TYPE_BY_NETWORK[config.suiNetwork];
 
 const TRUSTED_KIOSK_CAP_TYPES = new Set<string>([
   STANDARD_KIOSK_OWNER_CAP_TYPE,
-  ...PERSONAL_KIOSK_CAP_TYPES,
+  ...(activePersonalKioskCapType ? [activePersonalKioskCapType] : []),
 ]);
 
 export function extractKioskIdFromTrustedCap(
@@ -225,6 +232,17 @@ export function extractKioskIdFromTrustedCap(
   const capFields =
     (cap?.fields as Record<string, unknown> | undefined) || cap;
   return typeof capFields?.for === 'string' ? capFields.for : null;
+}
+
+export function collectKioskIdsFromTrustedCaps(
+  caps: Record<string, unknown>[]
+): Set<string> {
+  const kioskIds = new Set<string>();
+  for (const cap of caps) {
+    const kioskId = extractKioskIdFromTrustedCap(cap);
+    if (kioskId) kioskIds.add(kioskId);
+  }
+  return kioskIds;
 }
 
 type GrpcDynamicField = {
@@ -273,11 +291,7 @@ async function getKioskOwnedObjects(
     allCaps.push(...caps);
   }
 
-  const kioskIds = new Set<string>();
-  for (const wrapper of allCaps) {
-    const kioskId = extractKioskIdFromTrustedCap(wrapper);
-    if (kioskId) kioskIds.add(kioskId);
-  }
+  const kioskIds = collectKioskIdsFromTrustedCaps(allCaps);
 
   for (const kioskId of kioskIds) {
     const itemIds = new Set<string>();

@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  collectKioskIdsFromTrustedCaps,
   collectKioskDynamicFields,
   extractKioskIdFromTrustedCap,
 } from './sui';
 
 const MAINNET_PERSONAL_KIOSK_CAP =
   '0x0cb4bcc0560340eb1a1b929cabe56b33fc6449820ec8c1980d69bb98b649b802::personal_kiosk::PersonalKioskCap';
+const TESTNET_PERSONAL_KIOSK_CAP =
+  '0x06f6bdd3f2e2e759d8a4b9c252f379f7a05e72dfe4c0b9311cdac27b8eb791b1::personal_kiosk::PersonalKioskCap';
 
 test('rejects a forged object with a cap-shaped fields.for value', () => {
   const forged = {
@@ -37,6 +40,51 @@ test('extracts standard and allowlisted Personal Kiosk IDs', () => {
 
   assert.equal(extractKioskIdFromTrustedCap(standard), '0xstandard-kiosk');
   assert.equal(extractKioskIdFromTrustedCap(personal), '0xpersonal-kiosk');
+});
+
+test('does not query a Personal Kiosk cap from another network', () => {
+  const testnetCapOnMainnet = {
+    data: {
+      type: TESTNET_PERSONAL_KIOSK_CAP,
+      content: { fields: { cap: { for: '0xtestnet-kiosk' } } },
+    },
+  };
+
+  assert.equal(extractKioskIdFromTrustedCap(testnetCapOnMainnet), null);
+});
+
+test('collects every unique Kiosk referenced by the owner caps', () => {
+  const caps = [
+    {
+      data: {
+        type: '0x2::kiosk::KioskOwnerCap',
+        content: { fields: { for: '0xkiosk-one' } },
+      },
+    },
+    {
+      data: {
+        type: '0x2::kiosk::KioskOwnerCap',
+        content: { fields: { for: '0xkiosk-two' } },
+      },
+    },
+    {
+      data: {
+        type: MAINNET_PERSONAL_KIOSK_CAP,
+        content: { fields: { cap: { for: '0xpersonal-kiosk' } } },
+      },
+    },
+    {
+      data: {
+        type: '0x2::kiosk::KioskOwnerCap',
+        content: { fields: { for: '0xkiosk-one' } },
+      },
+    },
+  ];
+
+  assert.deepEqual(
+    [...collectKioskIdsFromTrustedCaps(caps)].sort(),
+    ['0xkiosk-one', '0xkiosk-two', '0xpersonal-kiosk']
+  );
 });
 
 test('keeps Listing state across separate dynamic-field pages', () => {
