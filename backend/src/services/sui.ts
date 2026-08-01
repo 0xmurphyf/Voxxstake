@@ -1,6 +1,7 @@
 import { SuiGraphQLClient } from '@mysten/sui/graphql';
 import { SuiGrpcClient } from '@mysten/sui/grpc';
 import type { ClientWithCoreApi } from '@mysten/sui/client';
+import { normalizeStructTag, normalizeSuiAddress } from '@mysten/sui/utils';
 import { verifyPersonalMessageSignature } from '@mysten/sui/verify';
 import { config } from '../config';
 import { VOXX_TYPE } from '../types';
@@ -241,55 +242,168 @@ async function getDirectlyOwnedObjects(
   return allObjects;
 }
 
-const STANDARD_KIOSK_OWNER_CAP_TYPE = '0x2::kiosk::KioskOwnerCap';
-const KIOSK_LISTING_TYPE = '0x2::kiosk::Listing';
+const KIOSK_TYPE = normalizeStructTag('0x2::kiosk::Kiosk');
+const KIOSK_LISTING_TYPE = normalizeStructTag('0x2::kiosk::Listing');
 
-const PERSONAL_KIOSK_CAP_TYPE_BY_NETWORK: Partial<
-  Record<typeof config.suiNetwork, string>
-> = {
-  mainnet:
-    '0x0cb4bcc0560340eb1a1b929cabe56b33fc6449820ec8c1980d69bb98b649b802::personal_kiosk::PersonalKioskCap',
-  testnet:
-    '0x06f6bdd3f2e2e759d8a4b9c252f379f7a05e72dfe4c0b9311cdac27b8eb791b1::personal_kiosk::PersonalKioskCap',
-};
-
-const activePersonalKioskCapType =
-  PERSONAL_KIOSK_CAP_TYPE_BY_NETWORK[config.suiNetwork];
-
-const TRUSTED_KIOSK_CAP_TYPES = new Set<string>([
-  STANDARD_KIOSK_OWNER_CAP_TYPE,
-  ...(activePersonalKioskCapType ? [activePersonalKioskCapType] : []),
-]);
-
-export function extractKioskIdFromTrustedCap(
-  capWrapper: Record<string, unknown>
-): string | null {
-  const capData = capWrapper.data as Record<string, unknown> | undefined;
-  if (!capData) return null;
-  const capType = capData.type as string | undefined;
-  if (!capType || !TRUSTED_KIOSK_CAP_TYPES.has(capType)) return null;
-
-  const content = capData.content as Record<string, unknown> | undefined;
-  const fields = content?.fields as Record<string, unknown> | undefined;
-
-  if (capType === STANDARD_KIOSK_OWNER_CAP_TYPE) {
-    return typeof fields?.for === 'string' ? fields.for : null;
+const DISCOVER_KIOSKS_BY_CONTENT_OWNER_QUERY = `
+  query DiscoverKiosksByContentOwner($type: String!, $cursor: String) {
+    objects(first: 50, after: $cursor, filter: { type: $type }) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        address
+        owner {
+          __typename
+          ... on ObjectOwner {
+            address {
+              address
+              asObject {
+                asMoveObject { contents { type { repr } json } }
+                owner {
+                  __typename
+                  ... on ObjectOwner {
+                    address {
+                      address
+                      asObject {
+                        asMoveObject { contents { type { repr } json } }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
   }
+`;
 
-  const cap = fields?.cap as Record<string, unknown> | undefined;
-  const capFields =
-    (cap?.fields as Record<string, unknown> | undefined) || cap;
-  return typeof capFields?.for === 'string' ? capFields.for : null;
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object'
+    ? value as Record<string, unknown>
+    : undefined;
 }
 
-export function collectKioskIdsFromTrustedCaps(
-  caps: Record<string, unknown>[]
-): Set<string> {
-  const kioskIds = new Set<string>();
-  for (const cap of caps) {
-    const kioskId = extractKioskIdFromTrustedCap(cap);
-    if (kioskId) kioskIds.add(kioskId);
+function kioskIdWhenContentOwnerMatches(
+  addressNode: Record<string, unknown> | undefined,
+  expectedOwner: string
+): string | null {
+  const kioskId = addressNode?.address;
+  const object = asRecord(addressNode?.asObject);
+  const moveObject = asRecord(object?.asMoveObject);
+  const contents = asRecord(moveObject?.contents);
+  const type = asRecord(contents?.type)?.repr;
+  const json = asRecord(contents?.json);
+  const contentOwner = json?.owner;
+
+  if (typeof kioskId !== 'string' || typeof type !== 'string' ||
+      typeof contentOwner !== 'string') {
+    return null;
   }
+
+  try {
+    if (normalizeStructTag(type) !== KIOSK_TYPE ||
+        normalizeSuiAddress(contentOwner) !== normalizeSuiAddress(expectedOwner)) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+
+  return kioskId;
+}
+
+/**
+ * Kiosk items are object-owned by a dynamic-field wrapper, which is then owned
+ * by the shared Kiosk. We trust the Kiosk Move object's `owner` field, not the
+ * presence or shape of a KioskOwnerCap / PersonalKioskCap in the wallet.
+ */
+export function extractKioskIdOwnedByAddressFromNftNode(
+  nftNode: Record<string, unknown>,
+  expectedOwner: string
+): string | null {
+  const owner = asRecord(nftNode.owner);
+  if (owner?.__typename !== 'ObjectOwner') return null;
+
+  const firstAddress = asRecord(owner.address);
+  const directlyOwnedByKiosk = kioskIdWhenContentOwnerMatches(
+    firstAddress,
+    expectedOwner
+  );
+  if (directlyOwnedByKiosk) return directlyOwnedByKiosk;
+
+  const wrapperObject = asRecord(firstAddress?.asObject);
+  const wrapperOwner = asRecord(wrapperObject?.owner);
+  if (wrapperOwner?.__typename !== 'ObjectOwner') return null;
+
+  return kioskIdWhenContentOwnerMatches(
+    asRecord(wrapperOwner.address),
+    expectedOwner
+  );
+}
+
+async function discoverKioskIdsByContentOwner(
+  address: string,
+  typeFilter: string
+): Promise<Set<string>> {
+  const kioskIds = new Set<string>();
+  let cursor: string | null = null;
+
+  while (true) {
+    let lastError: Error | null = null;
+    let connection: {
+      pageInfo: { hasNextPage: boolean; endCursor: string | null };
+      nodes: Record<string, unknown>[];
+    } | undefined;
+
+    for (let attempt = 1; attempt <= config.suiGrpcMaxAttempts; attempt += 1) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(
+        () => controller.abort(),
+        config.suiGrpcTimeoutMs
+      );
+      try {
+        const response = await GRAPHQL_CLIENT.query<{
+          objects?: {
+            pageInfo: { hasNextPage: boolean; endCursor: string | null };
+            nodes: Record<string, unknown>[];
+          };
+        }, { type: string; cursor: string | null }>({
+          query: DISCOVER_KIOSKS_BY_CONTENT_OWNER_QUERY,
+          variables: { type: typeFilter, cursor },
+          signal: controller.signal,
+        });
+
+        if (response.errors?.length) {
+          throw new Error(response.errors.map((error) => error.message).join('; '));
+        }
+        connection = response.data?.objects;
+        if (!connection) throw new Error('GraphQL Kiosk discovery returned no objects');
+        break;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        if (attempt < config.suiGrpcMaxAttempts) {
+          await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
+        }
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
+
+    if (!connection) throw lastError || new Error('GraphQL Kiosk discovery failed');
+
+    for (const node of connection.nodes) {
+      const kioskId = extractKioskIdOwnedByAddressFromNftNode(node, address);
+      if (kioskId) kioskIds.add(kioskId);
+    }
+
+    if (!connection.pageInfo.hasNextPage) break;
+    if (!connection.pageInfo.endCursor) {
+      throw new Error('GraphQL Kiosk discovery omitted its next cursor');
+    }
+    cursor = connection.pageInfo.endCursor;
+  }
+
   return kioskIds;
 }
 
@@ -318,7 +432,13 @@ export function collectKioskDynamicFields(
       continue;
     }
 
-    if (field.$kind !== 'DynamicField' || field.name?.type !== KIOSK_LISTING_TYPE) {
+    if (field.$kind !== 'DynamicField' || !field.name?.type) {
+      continue;
+    }
+
+    try {
+      if (normalizeStructTag(field.name.type) !== KIOSK_LISTING_TYPE) continue;
+    } catch {
       continue;
     }
 
@@ -331,14 +451,7 @@ async function getKioskOwnedObjects(
   address: string,
   typeFilter: string
 ): Promise<Record<string, unknown>[]> {
-  const allCaps: Record<string, unknown>[] = [];
-
-  for (const capType of TRUSTED_KIOSK_CAP_TYPES) {
-    const caps = await getDirectlyOwnedObjects(address, capType, false);
-    allCaps.push(...caps);
-  }
-
-  const kioskIds = collectKioskIdsFromTrustedCaps(allCaps);
+  const kioskIds = await discoverKioskIdsByContentOwner(address, typeFilter);
 
   const kioskObjects = await mapWithConcurrency(
     [...kioskIds],
