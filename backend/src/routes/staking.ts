@@ -16,6 +16,7 @@ import { config } from '../config';
 import { withMutex } from '../services/mutex';
 import { createThrottle } from '../services/throttle';
 import { reconcileOwnedStakes } from '../services/ownershipSync';
+import { rebuildRankingSnapshot } from '../services/backgroundSync';
 
 const router = Router();
 
@@ -42,6 +43,16 @@ function checkSyncRateLimit(address: string): boolean {
 
 function setSyncRateLimit(address: string): void {
   syncRateLimitMap.set(address, Date.now());
+}
+
+async function refreshRankingAfterCompleteSync(address: string): Promise<void> {
+  try {
+    await rebuildRankingSnapshot();
+  } catch (error) {
+    // The ownership sync is still valid even if the derived public snapshot
+    // cannot be rebuilt. Log it so the background cycle can retry later.
+    console.error(`[Staking] Ranking refresh failed after syncing ${address}:`, error);
+  }
 }
 
 /**
@@ -185,6 +196,9 @@ router.post('/sync', authMiddleware, async (req: AuthRequest, res: Response) => 
         { $set: { nft_count: nftCount, last_synced: new Date() } },
         { upsert: true }
       );
+      // The ID Card refreshes the public rank immediately after this request.
+      // Keep that derived snapshot in step with the just-persisted chain truth.
+      await refreshRankingAfterCompleteSync(address);
     }
     const positions = freshStakes.map((s) =>
       buildPositionFromStake(
@@ -280,6 +294,7 @@ router.get('/positions', authMiddleware, async (req: AuthRequest, res: Response)
         { $set: { nft_count: nftCount, last_synced: new Date() } },
         { upsert: true }
       );
+      await refreshRankingAfterCompleteSync(address);
     }
     const positions = freshStakes.map((s) =>
       buildPositionFromStake(s as unknown as import('../models/Stake').IStake, holdingMultiplier, ownedSet)
