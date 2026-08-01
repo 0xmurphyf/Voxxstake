@@ -38,6 +38,12 @@ async function main() {
       'Configure a production gRPC provider and SUI_GRPC_FAILOVER on Railway.'
     );
   }
+  if (/sui-grpc\.publicnode\.com/i.test(process.env.SUI_GRPC_URL || '')) {
+    console.warn(
+      '⚠️  Ignoring incompatible SUI_GRPC_URL (grpc-web-text); using ' +
+      `${config.suiGrpcUrl} with configured/default failover instead.`
+    );
+  }
 
   const app = express();
 

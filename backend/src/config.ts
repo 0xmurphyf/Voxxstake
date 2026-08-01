@@ -32,7 +32,24 @@ const suiNetwork = (() => {
 const defaultSuiGrpcUrl =
   suiNetwork === 'localnet'
     ? 'http://127.0.0.1:9000'
-    : `https://fullnode.${suiNetwork}.sui.io:443`;
+    : suiNetwork === 'mainnet'
+      ? 'https://sui.grpc.ankr.com:443'
+      : `https://fullnode.${suiNetwork}.sui.io:443`;
+const defaultSuiGrpcFailoverUrls =
+  suiNetwork === 'mainnet'
+    ? ['https://fullnode.mainnet.sui.io:443']
+    : [];
+const configuredSuiGrpcUrl = (process.env.SUI_GRPC_URL || '').trim();
+// PublicNode currently serves grpc-web-text at this hostname, which is not
+// compatible with Mysten's native Node gRPC transport. Ignore the known-bad
+// value so an existing Railway variable cannot keep every request on failover.
+const suiGrpcUrl = /sui-grpc\.publicnode\.com/i.test(configuredSuiGrpcUrl)
+  ? defaultSuiGrpcUrl
+  : configuredSuiGrpcUrl || defaultSuiGrpcUrl;
+const configuredSuiGrpcFailoverUrls = (process.env.SUI_GRPC_FAILOVER || '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(url => url && !/sui-grpc\.publicnode\.com/i.test(url));
 const defaultSuiGraphqlUrl =
   suiNetwork === 'localnet'
     ? 'http://127.0.0.1:9125/graphql'
@@ -53,11 +70,11 @@ export const config = {
   // Sui data access. gRPC is primary; GraphQL is the final read fallback and
   // also handles zkLogin signature verification.
   suiNetwork,
-  suiGrpcUrl: process.env.SUI_GRPC_URL || defaultSuiGrpcUrl,
-  suiGrpcFailoverUrls: (process.env.SUI_GRPC_FAILOVER || '')
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean),
+  suiGrpcUrl,
+  suiGrpcFailoverUrls: [...new Set([
+    ...configuredSuiGrpcFailoverUrls,
+    ...defaultSuiGrpcFailoverUrls,
+  ])].filter(url => url !== suiGrpcUrl),
   suiGrpcTimeoutMs: parseInt(process.env.SUI_GRPC_TIMEOUT_MS || '15000', 10),
   suiGrpcMaxAttempts: Math.min(5, Math.max(1,
     parseInt(process.env.SUI_GRPC_MAX_ATTEMPTS || '3', 10) || 3

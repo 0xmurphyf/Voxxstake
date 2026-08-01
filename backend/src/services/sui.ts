@@ -6,7 +6,10 @@ import { verifyPersonalMessageSignature } from '@mysten/sui/verify';
 import { config } from '../config';
 import { VOXX_TYPE } from '../types';
 
-const GRPC_URLS = [config.suiGrpcUrl, ...config.suiGrpcFailoverUrls].filter(Boolean);
+const GRPC_URLS = [...new Set([
+  config.suiGrpcUrl,
+  ...config.suiGrpcFailoverUrls,
+])].filter(Boolean);
 const GRPC_CLIENTS = GRPC_URLS.map(
   (baseUrl) => new SuiGrpcClient({ baseUrl, network: config.suiNetwork })
 );
@@ -383,7 +386,9 @@ async function getKioskOwnedObjects(
     }
 
     const unlistedItemIds = [...itemIds].filter((id) => !listedNftIds.has(id));
-    const chunkSize = 50;
+    // Keep the request comfortably below GraphQL providers' 5 KB payload
+    // limit when gRPC has to fail over. A 50-ID query can exceed that limit.
+    const chunkSize = 25;
 
     for (let offset = 0; offset < unlistedItemIds.length; offset += chunkSize) {
       const objectIds = unlistedItemIds.slice(offset, offset + chunkSize);
