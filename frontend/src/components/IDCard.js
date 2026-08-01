@@ -125,6 +125,9 @@ export function IDCard({ positions, stats, walletAddress, authToken, syncStakes,
   const PFP_PAGE_SIZE = 48;
   const pfpTotalPages = Math.ceil(activePositions.length / PFP_PAGE_SIZE);
   const pfpSlice = activePositions.slice(pfpPage * PFP_PAGE_SIZE, (pfpPage + 1) * PFP_PAGE_SIZE);
+  const pfpIsInActivePositions = pfpObjectId
+    ? activePositions.some(position => position.object_id === pfpObjectId)
+    : false;
 
   // Verify PFP is still held on-chain
   const verifyPfp = useCallback(async (objectId) => {
@@ -136,8 +139,11 @@ export function IDCard({ positions, stats, walletAddress, authToken, syncStakes,
       });
       const pos = r.data?.position;
       return pos?.status === 'active';
-    } catch {
-      return false;
+    } catch (err) {
+      // A transient API/RPC error does not prove that ownership was lost.
+      // Preserve the last known PFP state and let the next scan retry.
+      console.error('Failed to verify PFP:', err);
+      return null;
     } finally {
       setCheckingPfp(false);
     }
@@ -146,15 +152,17 @@ export function IDCard({ positions, stats, walletAddress, authToken, syncStakes,
   // On mount, verify existing PFP is still held
   useEffect(() => {
     if (pfpObjectId && pfpUrl) {
+      // The freshly loaded position list is already authoritative for the
+      // completed ownership scan and avoids a second, stale DB lookup.
+      if (pfpIsInActivePositions) {
+        setPfpValid(true);
+        return;
+      }
       verifyPfp(pfpObjectId).then(valid => {
-        if (!valid) {
-          setPfpValid(false);
-        } else {
-          setPfpValid(true);
-        }
+        if (valid !== null) setPfpValid(valid);
       });
     }
-  }, [pfpObjectId, pfpUrl, verifyPfp]);
+  }, [pfpObjectId, pfpUrl, pfpIsInActivePositions, lastScanAt, verifyPfp]);
 
   const selectPfp = (position) => {
     const imgUrl = position.image_url || VOXX_PLACEHOLDER;
@@ -450,7 +458,7 @@ export function IDCard({ positions, stats, walletAddress, authToken, syncStakes,
       {/* PFP validity warning */}
       {!pfpValid && pfpUrl && (
         <div className="alert-banner mt-3" style={{ fontSize: '0.75rem', padding: '8px 12px' }}>
-          <strong>PFP INVALID:</strong> You no longer hold this NFT. Select a new one.
+          <strong>PFP UNAVAILABLE:</strong> This NFT is not active for staking. It may be listed or transferred. Retry the scan or select another one.
         </div>
       )}
 
