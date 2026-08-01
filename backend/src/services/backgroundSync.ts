@@ -15,11 +15,11 @@ import { reconcileOwnedStakes } from './ownershipSync';
  * and updates stake records in the database.
  *
  * This runs independently of user-triggered syncs.
- * Default interval: 10 minutes (configurable via SYNC_INTERVAL_MINUTES env).
+ * Default interval: 30 minutes (configurable via SYNC_INTERVAL_MINUTES env).
  */
 
 const SYNC_INTERVAL_MS =
-  parseInt(process.env.SYNC_INTERVAL_MINUTES || '10', 10) * 60 * 1000;
+  parseInt(process.env.SYNC_INTERVAL_MINUTES || '30', 10) * 60 * 1000;
 
 // Per-address timeout for background sync — prevents one stuck address from
 // blocking the entire loop (cascading failure). Must be longer than the mutex

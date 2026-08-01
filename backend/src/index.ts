@@ -157,7 +157,7 @@ async function main() {
     console.log(`Voxxstake server listening on port ${config.port}`);
   });
 
-  // Start background sync (every 10 minutes by default)
+  // Start background sync (every 30 minutes by default)
   startBackgroundSync();
 }
 
