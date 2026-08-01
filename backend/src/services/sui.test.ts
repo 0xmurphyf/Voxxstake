@@ -1,90 +1,91 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  collectKioskIdsFromTrustedCaps,
   collectKioskDynamicFields,
-  extractKioskIdOwnedByAddressFromNftNode,
+  extractKioskIdFromTrustedCap,
   mapWithConcurrency,
 } from './sui';
 
-const USER = `0x${'81'.repeat(32)}`;
-const OTHER_USER = `0x${'42'.repeat(32)}`;
-const KIOSK_ID = `0x${'ab'.repeat(32)}`;
+const MAINNET_PERSONAL_KIOSK_CAP =
+  '0x0cb4bcc0560340eb1a1b929cabe56b33fc6449820ec8c1980d69bb98b649b802::personal_kiosk::PersonalKioskCap';
+const TESTNET_PERSONAL_KIOSK_CAP =
+  '0x06f6bdd3f2e2e759d8a4b9c252f379f7a05e72dfe4c0b9311cdac27b8eb791b1::personal_kiosk::PersonalKioskCap';
 
-function kioskAddressNode(owner: string) {
-  return {
-    address: KIOSK_ID,
-    asObject: {
-      asMoveObject: {
-        contents: {
-          type: {
-            repr: '0x0000000000000000000000000000000000000000000000000000000000000002::kiosk::Kiosk',
-          },
-          json: { owner },
-        },
-      },
-    },
-  };
-}
-
-test('discovers a Kiosk through the NFT dynamic-field wrapper and confirms its content owner', () => {
-  const nftNode = {
-    owner: {
-      __typename: 'ObjectOwner',
-      address: {
-        address: `0x${'cd'.repeat(32)}`,
-        asObject: {
-          owner: {
-            __typename: 'ObjectOwner',
-            address: kioskAddressNode(USER),
-          },
-        },
-      },
+test('rejects a forged object with a cap-shaped fields.for value', () => {
+  const forged = {
+    data: {
+      type: '0xdead::fake_cap::FakeCap',
+      content: { fields: { for: '0xvictim-kiosk' } },
     },
   };
 
-  assert.equal(
-    extractKioskIdOwnedByAddressFromNftNode(nftNode, USER),
-    KIOSK_ID
-  );
-  assert.equal(
-    extractKioskIdOwnedByAddressFromNftNode(nftNode, OTHER_USER),
-    null
-  );
+  assert.equal(extractKioskIdFromTrustedCap(forged), null);
 });
 
-test('accepts an NFT directly object-owned by a Kiosk with the matching content owner', () => {
-  const nftNode = {
-    owner: {
-      __typename: 'ObjectOwner',
-      address: kioskAddressNode(USER),
+test('extracts standard and allowlisted Personal Kiosk IDs', () => {
+  const standard = {
+    data: {
+      type: '0x0000000000000000000000000000000000000000000000000000000000000002::kiosk::KioskOwnerCap',
+      content: { fields: { for: '0xstandard-kiosk' } },
     },
   };
-
-  assert.equal(
-    extractKioskIdOwnedByAddressFromNftNode(nftNode, USER),
-    KIOSK_ID
-  );
-});
-
-test('does not infer Kiosk ownership from a cap-shaped or non-Kiosk object', () => {
-  const nftNode = {
-    owner: {
-      __typename: 'ObjectOwner',
-      address: {
-        address: KIOSK_ID,
-        asObject: {
-          asMoveObject: {
-            contents: {
-              type: { repr: '0x2::fake::Kiosk' },
-              json: { owner: USER, for: KIOSK_ID },
-            },
-          },
-        },
+  const personal = {
+    data: {
+      type: MAINNET_PERSONAL_KIOSK_CAP,
+      content: {
+        fields: { cap: { for: '0xpersonal-kiosk' } },
       },
     },
   };
 
-  assert.equal(extractKioskIdOwnedByAddressFromNftNode(nftNode, USER), null);
+  assert.equal(extractKioskIdFromTrustedCap(standard), '0xstandard-kiosk');
+  assert.equal(extractKioskIdFromTrustedCap(personal), '0xpersonal-kiosk');
+});
+
+test('does not query a Personal Kiosk cap from another network', () => {
+  const testnetCapOnMainnet = {
+    data: {
+      type: TESTNET_PERSONAL_KIOSK_CAP,
+      content: { fields: { cap: { for: '0xtestnet-kiosk' } } },
+    },
+  };
+
+  assert.equal(extractKioskIdFromTrustedCap(testnetCapOnMainnet), null);
+});
+
+test('collects every unique Kiosk referenced by the owner caps', () => {
+  const caps = [
+    {
+      data: {
+        type: '0x2::kiosk::KioskOwnerCap',
+        content: { fields: { for: '0xkiosk-one' } },
+      },
+    },
+    {
+      data: {
+        type: '0x2::kiosk::KioskOwnerCap',
+        content: { fields: { for: '0xkiosk-two' } },
+      },
+    },
+    {
+      data: {
+        type: MAINNET_PERSONAL_KIOSK_CAP,
+        content: { fields: { cap: { for: '0xpersonal-kiosk' } } },
+      },
+    },
+    {
+      data: {
+        type: '0x2::kiosk::KioskOwnerCap',
+        content: { fields: { for: '0xkiosk-one' } },
+      },
+    },
+  ];
+
+  assert.deepEqual(
+    [...collectKioskIdsFromTrustedCaps(caps)].sort(),
+    ['0xkiosk-one', '0xkiosk-two', '0xpersonal-kiosk']
+  );
 });
 
 test('keeps Listing state across separate dynamic-field pages', () => {
