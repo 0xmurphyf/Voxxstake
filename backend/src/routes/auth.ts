@@ -82,8 +82,9 @@ router.post('/nonce', async (req: Request, res: Response) => {
     //   winner's nonce and returns THAT to the client — both clients receive
     //   the same nonce and /verify works for both.
     //
-    //   Old unused nonces are cleaned up by the TTL index on created_at
-    //   (NONCE_EXPIRY_SECONDS + 60s), so we never need to delete them explicitly.
+    //   Old unused nonces are cleaned up by the TTL index on created_at.
+    //   A nonce for another application is replaced immediately so its request
+    //   title cannot leak into this signing flow.
     try {
       await Nonce.create({ address: normalized, nonce, created_at: new Date() });
     } catch (err: unknown) {
@@ -96,12 +97,16 @@ router.post('/nonce', async (req: Request, res: Response) => {
         const existing = await Nonce.findOne({ address: normalized, used: false }).lean();
         if (existing) {
           const age = (Date.now() - existing.created_at.getTime()) / 1000;
-          if (age <= NONCE_EXPIRY_SECONDS) {
+          if (
+            age <= NONCE_EXPIRY_SECONDS &&
+            existing.nonce.startsWith(`${requestTitle}\n\n`)
+          ) {
             // Winner's nonce is fresh — return it to the client.
             res.json({ nonce: existing.nonce, address: normalized });
             return;
           }
-          // Winner's nonce is stale — delete it so we can create a fresh one.
+          // Delete stale nonces and nonces created for a different application
+          // so the wallet always displays the request title for this flow.
           await Nonce.deleteOne({ _id: existing._id });
         }
         // Retry insert (existing was stale or TTL-deleted between E11000 and read).
