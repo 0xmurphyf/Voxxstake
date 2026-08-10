@@ -59,7 +59,7 @@ router.post('/nonce', async (req: Request, res: Response) => {
   try {
     if (!authThrottle(req, res)) return;
 
-    const { address } = req.body;
+    const { address, purpose } = req.body;
     if (!address) {
       res.status(400).json({ detail: 'Address is required' });
       return;
@@ -68,8 +68,11 @@ router.post('/nonce', async (req: Request, res: Response) => {
     const normalized = normalizeAddress(address);
 
     const randomPart = crypto.randomBytes(16).toString('hex');
+    const requestTitle = purpose === 'voss-executive-selection'
+      ? 'ENTERING EXECUTIVE SELECTION SYSTEM'
+      : 'Apply for Neoterra Citizenship';
     // Human-readable message so the user's wallet shows what they're signing
-    const nonce = `Apply for Neoterra Citizenship\n\nWallet: ${normalized}\nNonce: ${randomPart}`;
+    const nonce = `${requestTitle}\n\nWallet: ${normalized}\nNonce: ${randomPart}`;
 
     // Race-safe nonce creation: INSERT only (never UPDATE).
     //
